@@ -1,12 +1,12 @@
 library( tidyverse )
 
-Rcpp::sourceCpp("tanimoto.cpp")
+Rcpp::sourceCpp("tanimoto.cpp", rebuild=TRUE)
 
-main <- function()
-{
-    X <- readRDS( "data/morgan_normal.rds" ) %>% slice( 1:1e6 )
-    vhex <- X$fingerprint
-    vbin <- map_chr( vhex, hex2bin )
+X <- readRDS( "data/morgan_normal.rds" ) %>% slice( 1:1e5 )
+fp <- map( X$fingerprint, MorganFP$new )
 
-    rbin <- bin_jaccard_many( vbin[1], vbin )
-}
+Rprof()
+res <- map_dbl( fp, fp[[1]]$tanimoto )
+Rprof(NULL)
+
+summaryRprof()

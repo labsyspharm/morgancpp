@@ -1,10 +1,8 @@
 #include <Rcpp.h>
-
 #include <bitset>
 
 // Converts character hex to character binary
-// [[Rcpp::export]]
-std::string hex2bin( std::string hex )
+std::string hex2bin( const std::string& hex )
 {
   std::string bin;
   for( unsigned int i = 0; i != hex.length(); ++i )
@@ -34,35 +32,47 @@ std::string hex2bin( std::string hex )
 }
 
 // Jaccard similarity of two binary strings of length 2048
-// [[Rcpp::export]]
-double bin_jaccard( std::string s1, std::string s2 )
+double bin_jaccard( const std::bitset<2048>& b1, const std::bitset<2048>& b2 )
 {
-  if( s1.size() != 2048 || s2.size() != 2048 )
-    {
-      Rcpp::Rcerr << "One or more inputs do not contain 2048 bits" << std::endl;
-      return 0.0;
-    }
-  std::bitset<2048> b1(s1);
-  std::bitset<2048> b2(s2);
   int val1 = (b1 & b2).count();    // intersection
   int val2 = (b1 | b2).count();    // union
   return static_cast<double>(val1) / val2;
 }
 
-// One against many version of bin_jaccard()
-// [[Rcpp::export]]
-std::vector<double> bin_jaccard_many( std::string s, std::vector< std::string > v )
-{
-  unsigned int n = v.size();
-  std::vector<double> res( n );
-  for( unsigned int i = 0; i < n; ++i )
-    res[i] = bin_jaccard( s, v[i] );
-  return res;
-}
-
 // Jaccard similarity of two hexadecimal strings of length 2048/4
 // [[Rcpp::export]]
-double hex_jaccard( std::string s1, std::string s2 )
+double hex_jaccard( const std::string& s1, const std::string& s2 )
 {
-  return bin_jaccard( hex2bin(s1), hex2bin(s2) );
+  std::bitset<2048> b1( hex2bin(s1) );
+  std::bitset<2048> b2( hex2bin(s2) );
+  return bin_jaccard( b1, b2 );
+}
+
+// Morgan fingerprint
+class MorganFP {
+public:
+  // Constructor
+  MorganFP( const std::string& hx )
+  {
+    if( hx.length() != 512 )
+      ::Rf_error("Input hex string must be of length 512");
+    bs = std::bitset<2048>( hex2bin(hx) );
+  }
+
+  double tanimoto( const MorganFP& other ) {return bin_jaccard( bs, other.bs );}
+  
+private:
+  std::bitset<2048> bs;
+};
+
+using namespace Rcpp;
+
+// Expose all relevant classes through an Rcpp module
+RCPP_EXPOSED_CLASS(MorganFP)
+RCPP_MODULE(morgan_cpp) {
+  
+  class_<MorganFP>( "MorganFP" )
+    .constructor<std::string>("Constructs a morgan fingerprint object from a hex string")
+    .method("tanimoto", &MorganFP::tanimoto, "Tanimoto similarity against another fingerprint" )
+    ;
 }
