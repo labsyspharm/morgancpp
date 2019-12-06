@@ -4,10 +4,9 @@ Rcpp::sourceCpp("tanimoto.cpp")
 
 main <- function()
 {
-    X <- readRDS( "data/morgan_normal.rds" ) %>% slice( 1:1e5 )
+    X <- readRDS( "data/morgan_normal.rds" ) %>% slice( 1:1e6 )
+    vhex <- X$fingerprint
+    vbin <- map_chr( vhex, hex2bin )
 
-    Rprof("prof1.out")
-    v <- map_dbl( X$fingerprint, hex_jaccard, X$fingerprint[1] )
-    Rprof(NULL)
-    summaryRprof("prof1.out")
+    rbin <- bin_jaccard_many( vbin[1], vbin )
 }

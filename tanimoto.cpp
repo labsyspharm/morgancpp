@@ -49,6 +49,17 @@ double bin_jaccard( std::string s1, std::string s2 )
   return static_cast<double>(val1) / val2;
 }
 
+// One against many version of bin_jaccard()
+// [[Rcpp::export]]
+std::vector<double> bin_jaccard_many( std::string s, std::vector< std::string > v )
+{
+  unsigned int n = v.size();
+  std::vector<double> res( n );
+  for( unsigned int i = 0; i < n; ++i )
+    res[i] = bin_jaccard( s, v[i] );
+  return res;
+}
+
 // Jaccard similarity of two hexadecimal strings of length 2048/4
 // [[Rcpp::export]]
 double hex_jaccard( std::string s1, std::string s2 )
