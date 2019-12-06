@@ -48,31 +48,49 @@ double hex_jaccard( const std::string& s1, const std::string& s2 )
   return bin_jaccard( b1, b2 );
 }
 
-// Morgan fingerprint
-class MorganFP {
+// Morgan fingerprint collection
+class MorganFPS {
 public:
   // Constructor
-  MorganFP( const std::string& hx )
+  MorganFPS( const std::vector<std::string>& vhx )
   {
-    if( hx.length() != 512 )
-      ::Rf_error("Input hex string must be of length 512");
-    bs = std::bitset<2048>( hex2bin(hx) );
+    for( unsigned int i = 0; i < vhx.size(); ++i )
+      {
+	std::string s = vhx[i];
+	if( s.length() != 512 )
+	  ::Rf_error("Input hex strings must be of length 512");
+
+	// Create a new bit set and add it to collection
+	std::bitset<2048> bs( hex2bin(s) );
+	vbs.push_back(bs);
+      }
   }
 
-  double tanimoto( const MorganFP& other ) {return bin_jaccard( bs, other.bs );}
+  // Tanimoto similarity between drugs i and j
+  double tanimoto( unsigned int i, unsigned int j ) {return bin_jaccard( vbs[i-1], vbs[j-1] );}
+
+  // Tanimoto similarity of drug i to every other drug
+  std::vector<double> tanimoto_all( unsigned int i )
+  {
+    std::vector<double> res( vbs.size() );
+    for( unsigned int ii = 0; ii < vbs.size(); ++ii )
+      res[ii] = bin_jaccard( vbs[i-1], vbs[ii] );
+    return res;
+  }
   
 private:
-  std::bitset<2048> bs;
+  std::vector< std::bitset<2048> > vbs;
 };
 
 using namespace Rcpp;
 
 // Expose all relevant classes through an Rcpp module
-RCPP_EXPOSED_CLASS(MorganFP)
+RCPP_EXPOSED_CLASS(MorganFPS)
 RCPP_MODULE(morgan_cpp) {
   
-  class_<MorganFP>( "MorganFP" )
-    .constructor<std::string>("Constructs a morgan fingerprint object from a hex string")
-    .method("tanimoto", &MorganFP::tanimoto, "Tanimoto similarity against another fingerprint" )
+  class_<MorganFPS>( "MorganFPS" )
+    .constructor< std::vector<std::string> >()
+    .method("tanimoto", &MorganFPS::tanimoto )
+    .method("tanimoto_all", &MorganFPS::tanimoto_all )
     ;
 }
