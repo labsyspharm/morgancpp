@@ -10,3 +10,4 @@ Depends: R (>= 3.6.0)
 Encoding: UTF-8
 LinkingTo: Rcpp
 Imports: Rcpp
+RoxygenNote: 7.0.0

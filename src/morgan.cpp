@@ -47,7 +47,14 @@ double bin_jaccard( const std::bitset<2048>& b1, const std::bitset<2048>& b2 )
   return static_cast<double>(val1) / val2;
 }
 
-// Jaccard similarity of two hexadecimal strings of length 2048/4
+//' Tanimoto similarity between two Morgan fingerprints
+//'
+//' Computes Tanimoto similarity between two hexadecimal strings
+//'
+//' @param s1 Hexadecimal string of length 512
+//' @param s2 Hexadecimal string of length 512
+//' @return Jaccard similarity over the bits representing individual keys
+//' @export
 // [[Rcpp::export]]
 double tanimoto( const std::string& s1, const std::string& s2 )
 {
@@ -56,7 +63,16 @@ double tanimoto( const std::string& s1, const std::string& s2 )
   return bin_jaccard( b1, b2 );
 }
 
-// Morgan fingerprints collection
+//' @name MorganFPS
+//' @title Morgan fingerprints collection
+//' @description Efficient structure for storing a set of Morgan fingerprints
+//' @field new Constructor
+//' @field tanimoto (i,j) similarity between fingerprints i and j
+//' @field tanimoto_all (i) similarity between fingerprint i and all others
+//' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
+//'    fingerprints in the collection
+//' @field size number of bytes used to store the fingerprints
+//' @export
 class MorganFPS {
 public:
   // Constructor accepts a character vector of hex strings
@@ -110,11 +126,11 @@ private:
   std::vector< std::bitset<2048> > vbs;
 };
 
-using namespace Rcpp;
-
 // Expose all relevant classes through an Rcpp module
 RCPP_EXPOSED_CLASS(MorganFPS)
 RCPP_MODULE(morgan_cpp) {
+
+  using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
     .constructor< std::vector<std::string> >()
