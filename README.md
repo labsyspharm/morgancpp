@@ -39,3 +39,45 @@ tanimoto( fps[1], "FFF" )
 # Error in tanimoto(fps[1], "FFF") : Input hex string must be of length 512
 ```
 
+However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an effcient manner and query that structure for similarity:
+
+``` r
+m <- MorganFPS$new( fps )
+# C++ object <0x559fa18f2c40> of class 'MorganFPS' <0x559fa484d570>
+
+object.size(fps)
+57467704 bytes
+
+m$size()
+[1] 25600000
+```
+
+Similarity between fingerprints in the structure can be computed by indexing:
+
+``` r
+m$tanimoto( 1, 1 )   # 1
+m$tanimoto( 1, 2 )   # 0.1627907
+```
+
+The entire similarity profile against all other fingerprints in the collection can be obtained for compounds already in the collection (specified as index `i`) or new external compounds (specified as hexadecimal strings):
+
+``` r
+res1 <- m$tanimoto_all( 1 )       # Compound 1 against all 100,000 fingerprints
+res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 fingerprints
+```
+
+## Additional documentation
+
+Obtaining additional information about functionality of the package can be done through the standard R interface:
+
+``` r
+# All available functions
+library( help = morgancpp )
+
+# Help for individual functions / data structures
+?morgancpp::tanimoto
+?morgancpp::MorganFPS
+
+# C++ docstrings providing full signatures of each method
+morgancpp::MorganFPS
+```
