@@ -89,7 +89,7 @@ public:
   // Adjust for 0-based indexing
   double tanimoto( unsigned int i, unsigned int j )
   {
-    if( i >= vbs.size() || j >= vbs.size() )
+    if( i == 0 || j == 0 || i > vbs.size() || j > vbs.size() )
       ::Rf_error("Index out of range");
     return bin_jaccard( vbs[i-1], vbs[j-1] );
   }
@@ -98,7 +98,7 @@ public:
   std::vector<double> tanimoto_all( unsigned int i )
   {
     // Argument verification
-    if( i >= vbs.size() )
+    if( i == 0 || i > vbs.size() )
       ::Rf_error("Index out of range");
 
     // Iterate over the collection
