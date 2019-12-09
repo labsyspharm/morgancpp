@@ -6,7 +6,7 @@ Title: Morgan fingerprints in C++
 Description: Efficient data structure for storing and comparing Morgan fingerprints
 Author: Artem Sokolov
 Maintainer: Artem Sokolov <artem.sokolov@gmail.com>
-Depends: R (>= 3.6.0)
+Depends: R (>= 3.5.0)
 Encoding: UTF-8
 LinkingTo: Rcpp
 Imports: Rcpp
