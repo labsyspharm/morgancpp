@@ -27,7 +27,7 @@ test_that("Hex strings have to be of length 512", {
 test_that("New collections can be instatiated from hex strings", {
     v <- load_example1(1000)
     m <- MorganFPS$new(v)
-    expect_identical( m$size(), 256000 )
+    expect_equal( m$size(), 256000 )
 })
 
 test_that("Collections can be queried for pairwise similarities", {
