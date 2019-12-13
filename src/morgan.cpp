@@ -36,8 +36,9 @@ Fingerprint hex2fp(const std::string& hex) {
   }
   // Convert hex to raw bytes
   std::string raw(256, '\0');
-  for (int i = 0; i < hex.length(); i += 2) {
-    raw[i/2] = parse_hex_char(hex[i]) | (parse_hex_char(hex[i+1]) << 4);
+  auto hi = std::cbegin(hex);
+  for (auto& ri : raw) {
+    ri = parse_hex_char(*hi++) | (parse_hex_char(*hi++) << 4);
   }
   return raw2fp(raw);
 }
@@ -89,9 +90,8 @@ public:
 
   // Constructor accepts a character vector of hex strings
   MorganFPS(const std::vector<std::string>& vhx) {
-    for (int i = 0; i < vhx.size(); ++i) {
-      Fingerprint fp = hex2fp(vhx[i]);
-      fps.push_back(fp);
+    for (auto&& hex : vhx) {
+      fps.push_back(hex2fp(hex));
     }
   }
 
@@ -109,9 +109,10 @@ public:
     if (i <= 0 || i > fps.size()) {
       ::Rf_error("Index out of range");
     }
-    std::vector<double> res(fps.size());
-    for (int ii = 0; ii < fps.size(); ++ii) {
-      res[ii] = jaccard_fp(fps[i-1], fps[ii]);
+    std::vector<double> res;
+    res.reserve(fps.size());
+    for (auto&& fp : fps) {
+      res.push_back(jaccard_fp(fps[i-1], fp));
     }
     return res;
   }
@@ -119,10 +120,11 @@ public:
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
   std::vector<double> tanimoto_ext(const std::string& other) {
-    Fingerprint fp = hex2fp(other);
-    std::vector<double> res(fps.size());
-    for (int ii = 0; ii < fps.size(); ++ii) {
-      res[ii] = jaccard_fp(fp, fps[ii]);
+    Fingerprint fp_other = hex2fp(other);
+    std::vector<double> res;
+    res.reserve(fps.size());
+    for (auto&& fp : fps) {
+      res.push_back(jaccard_fp(fp_other, fp));
     }
     return res;
   }
