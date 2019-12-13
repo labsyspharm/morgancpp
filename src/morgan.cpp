@@ -1,51 +1,61 @@
 #include <Rcpp.h>
-#include <bitset>
 
-// Converts character hex to character binary
-std::bitset<2048> hex2bin( const std::string& hex )
-{
-  // Verify that the string contains 2048 bits of data
-  if( hex.length() != 512 )
+
+using Fingerprint = std::array<unsigned long long, 32>;
+
+
+// Parse a single hexadecimal character to its integer representation.
+int parse_hex_char(const char& c) {
+  int v;
+  if ((c >= '0') && (c <= '9')) {
+    v = (c - '0');
+  } else if ((c >= 'A') && (c <= 'F')) {
+    v = (c - 'A' + 10);
+  } else if ((c >= 'a') && (c <= 'f')) {
+    v = (c - 'a' + 10);
+  } else {
+    ::Rf_error("Hex string may only contain characters in [0-9A-F]");
+  }
+  return v;
+}
+
+// Convert raw byte string to fingerprint.
+Fingerprint raw2fp(const std::string& raw) {
+  if (raw.length() != 256) {
+    ::Rf_error("Input raw string must be of length 256");
+  }
+  Fingerprint fp;
+  std::memcpy(fp.data(), &raw[0], sizeof(fp));
+  return fp;
+}
+
+// Convert ASCII hex string to fingerprint.
+Fingerprint hex2fp(const std::string& hex) {
+  if (hex.length() != 512) {
     ::Rf_error("Input hex string must be of length 512");
-
-  // Convert hex to binary
-  // Perform the conversion by hand to keep things optimized
-  std::string bin;
-  for( unsigned int i = 0; i != hex.length(); ++i )
-    {
-      switch(toupper(hex[i]))
-	{
-        case '0': bin += "0000"; break;
-        case '1': bin += "0001"; break;
-        case '2': bin += "0010"; break;
-        case '3': bin += "0011"; break;
-        case '4': bin += "0100"; break;
-        case '5': bin += "0101"; break;
-        case '6': bin += "0110"; break;
-        case '7': bin += "0111"; break;
-        case '8': bin += "1000"; break;
-        case '9': bin += "1001"; break;
-        case 'A': bin += "1010"; break;
-        case 'B': bin += "1011"; break;
-        case 'C': bin += "1100"; break;
-        case 'D': bin += "1101"; break;
-        case 'E': bin += "1110"; break;
-        case 'F': bin += "1111"; break;
-	default: bin += "0000"; break;
-	}
-    }
-
-  // Instantiate the bitset from the binary string
-  return std::bitset<2048>(bin);
+  }
+  // Convert hex to raw bytes
+  std::string raw(256, '\0');
+  for (int i = 0; i < hex.length(); i += 2) {
+    raw[i/2] = parse_hex_char(hex[i]) | (parse_hex_char(hex[i+1]) << 4);
+  }
+  return raw2fp(raw);
 }
 
-// Jaccard similarity of two binary strings of length 2048
-double bin_jaccard( const std::bitset<2048>& b1, const std::bitset<2048>& b2 )
-{
-  int val1 = (b1 & b2).count();    // intersection
-  int val2 = (b1 | b2).count();    // union
-  return static_cast<double>(val1) / val2;
+
+// Compute Jaccard similarity of two fingerprints
+double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
+  int count_and = 0, count_or = 0;
+  auto i1 = std::cbegin(f1), i2 = std::cbegin(f2);
+  while (i1 != std::cend(f1)) {
+    count_and += __builtin_popcountll(*i1 & *i2);
+    count_or += __builtin_popcountll(*i1 | *i2);
+    ++i1;
+    ++i2;
+  }
+  return static_cast<double>(count_and) / count_or;
 }
+
 
 //' Tanimoto similarity between two Morgan fingerprints
 //'
@@ -56,12 +66,12 @@ double bin_jaccard( const std::bitset<2048>& b1, const std::bitset<2048>& b2 )
 //' @return Jaccard similarity over the bits representing individual keys
 //' @export
 // [[Rcpp::export]]
-double tanimoto( const std::string& s1, const std::string& s2 )
-{
-  std::bitset<2048> b1 = hex2bin(s1);
-  std::bitset<2048> b2 = hex2bin(s2);
-  return bin_jaccard( b1, b2 );
+double tanimoto(const std::string& s1, const std::string& s2) {
+  Fingerprint fp1 = hex2fp(s1);
+  Fingerprint fp2 = hex2fp(s2);
+  return jaccard_fp(fp1, fp2);
 }
+
 
 //' @name MorganFPS
 //' @title Morgan fingerprints collection
@@ -74,57 +84,60 @@ double tanimoto( const std::string& s1, const std::string& s2 )
 //' @field size number of bytes used to store the fingerprints
 //' @export
 class MorganFPS {
+
 public:
+
   // Constructor accepts a character vector of hex strings
-  MorganFPS( const std::vector<std::string>& vhx )
-  {
-    for( unsigned int i = 0; i < vhx.size(); ++i )
-      {
-	std::bitset<2048> bs = hex2bin(vhx[i]);
-	vbs.push_back(bs);
-      }
+  MorganFPS(const std::vector<std::string>& vhx) {
+    for (int i = 0; i < vhx.size(); ++i) {
+      Fingerprint fp = hex2fp(vhx[i]);
+      fps.push_back(fp);
+    }
   }
 
   // Tanimoto similarity between drugs i and j
   // Adjust for 0-based indexing
-  double tanimoto( unsigned int i, unsigned int j )
-  {
-    if( i == 0 || j == 0 || i > vbs.size() || j > vbs.size() )
+  double tanimoto(int i, int j) {
+    if (i <= 0 || j <= 0 || i > fps.size() || j > fps.size()) {
       ::Rf_error("Index out of range");
-    return bin_jaccard( vbs[i-1], vbs[j-1] );
+    }
+    return jaccard_fp(fps[i-1], fps[j-1]);
   }
 
   // Tanimoto similarity of drug i to every other drug
-  std::vector<double> tanimoto_all( unsigned int i )
-  {
-    // Argument verification
-    if( i == 0 || i > vbs.size() )
+  std::vector<double> tanimoto_all(int i) {
+    if (i <= 0 || i > fps.size()) {
       ::Rf_error("Index out of range");
-
-    // Iterate over the collection
-    std::vector<double> res( vbs.size() );
-    for( unsigned int ii = 0; ii < vbs.size(); ++ii )
-      res[ii] = bin_jaccard( vbs[i-1], vbs[ii] );
+    }
+    std::vector<double> res(fps.size());
+    for (int ii = 0; ii < fps.size(); ++ii) {
+      res[ii] = jaccard_fp(fps[i-1], fps[ii]);
+    }
     return res;
   }
 
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
-  std::vector<double> tanimoto_ext( const std::string& other )
-  {
-    std::bitset<2048> b = hex2bin(other);
-    std::vector<double> res( vbs.size() );
-    for( unsigned int ii = 0; ii < vbs.size(); ++ii )
-      res[ii] = bin_jaccard( b, vbs[ii] );
+  std::vector<double> tanimoto_ext(const std::string& other) {
+    Fingerprint fp = hex2fp(other);
+    std::vector<double> res(fps.size());
+    for (int ii = 0; ii < fps.size(); ++ii) {
+      res[ii] = jaccard_fp(fp, fps[ii]);
+    }
     return res;
   }
 
   // Size of the dataset
-  unsigned int size() {return vbs.size() * sizeof(std::bitset<2048>);}
-  
+  int size() {
+    return fps.size() * sizeof(Fingerprint);
+  }
+
 private:
-  std::vector< std::bitset<2048> > vbs;
+
+  std::vector<Fingerprint> fps;
+
 };
+
 
 // Expose all relevant classes through an Rcpp module
 RCPP_EXPOSED_CLASS(MorganFPS)
