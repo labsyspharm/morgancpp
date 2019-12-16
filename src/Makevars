@@ -1,0 +1,1 @@
+PKG_CXXFLAGS=-O2 -mpopcnt -mavx -mtune=haswell
