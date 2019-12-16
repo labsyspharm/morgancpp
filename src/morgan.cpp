@@ -68,8 +68,8 @@ double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
 //' @export
 // [[Rcpp::export]]
 double tanimoto(const std::string& s1, const std::string& s2) {
-  Fingerprint fp1 = hex2fp(s1);
-  Fingerprint fp2 = hex2fp(s2);
+  const Fingerprint& fp1 = hex2fp(s1);
+  const Fingerprint& fp2 = hex2fp(s2);
   return jaccard_fp(fp1, fp2);
 }
 
@@ -98,21 +98,16 @@ public:
   // Tanimoto similarity between drugs i and j
   // Adjust for 0-based indexing
   double tanimoto(int i, int j) {
-    if (i <= 0 || j <= 0 || i > fps.size() || j > fps.size()) {
-      ::Rf_error("Index out of range");
-    }
-    return jaccard_fp(fps[i-1], fps[j-1]);
+    return jaccard_fp(fps.at(i-1), fps.at(j-1));
   }
 
   // Tanimoto similarity of drug i to every other drug
   std::vector<double> tanimoto_all(int i) {
-    if (i <= 0 || i > fps.size()) {
-      ::Rf_error("Index out of range");
-    }
+    const Fingerprint& fp_other = fps.at(i-1);
     std::vector<double> res;
     res.reserve(fps.size());
     for (auto&& fp : fps) {
-      res.push_back(jaccard_fp(fps[i-1], fp));
+      res.push_back(jaccard_fp(fp, fp_other));
     }
     return res;
   }
@@ -120,11 +115,11 @@ public:
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
   std::vector<double> tanimoto_ext(const std::string& other) {
-    Fingerprint fp_other = hex2fp(other);
+    const Fingerprint& fp_other = hex2fp(other);
     std::vector<double> res;
     res.reserve(fps.size());
     for (auto&& fp : fps) {
-      res.push_back(jaccard_fp(fp_other, fp));
+      res.push_back(jaccard_fp(fp, fp_other));
     }
     return res;
   }
