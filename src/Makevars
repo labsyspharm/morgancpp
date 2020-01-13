@@ -1,0 +1,1 @@
+PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell
