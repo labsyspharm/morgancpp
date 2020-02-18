@@ -1,7 +1,7 @@
 #include <Rcpp.h>
+#include <array>
 
-
-using Fingerprint = std::array<unsigned long long, 32>;
+using Fingerprint = std::array<std::uint64_t, 32>;
 
 
 // Parse a single hexadecimal character to its integer representation.
