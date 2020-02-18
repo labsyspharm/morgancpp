@@ -79,11 +79,14 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @name MorganFPS
 //' @title Morgan fingerprints collection
 //' @description Efficient structure for storing a set of Morgan fingerprints
-//' @field new Constructor
+//' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
+//'   format or a path to a binary file of fingerprints using the argument
+//'   `from_file = TRUE`
 //' @field tanimoto (i,j) similarity between fingerprints i and j
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
+//' @field save_file (path) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
 //' @export
 class MorganFPS {
@@ -95,6 +98,18 @@ public:
     for (auto&& hex : vhx) {
       fps.push_back(hex2fp(hex));
     }
+  }
+
+  // Constructor accepts a file path to load fingerprints from binary file
+  MorganFPS(const std::string& filename, const bool from_file) {
+    std::ifstream in_stream(filename, std::ios::binary);
+    in_stream.unsetf(std::ios::skipws);
+    in_stream.seekg(0, std::ios::end);
+    std::streampos file_size = in_stream.tellg();
+    in_stream.seekg(0, std::ios::beg);
+    fps.resize(file_size / sizeof(Fingerprint));
+    in_stream.read(reinterpret_cast<char*>(fps.data()), file_size);
+    in_stream.close();
   }
 
   // Tanimoto similarity between drugs i and j
@@ -129,7 +144,7 @@ public:
   // Save binary fp file
   void save_file(const std::string& filename) {
     std::ofstream out_stream(filename, std::ios::out | std::ios::binary);
-    out_stream.write(reinterpret_cast<char*>(&fps[0]), size());
+    out_stream.write(reinterpret_cast<char*>(fps.data()), size());
     out_stream.close();
   }
 
@@ -144,7 +159,6 @@ private:
 
 };
 
-
 // Expose all relevant classes through an Rcpp module
 RCPP_EXPOSED_CLASS(MorganFPS)
 RCPP_MODULE(morgan_cpp) {
@@ -152,7 +166,8 @@ RCPP_MODULE(morgan_cpp) {
   using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
-    .constructor< std::vector<std::string> >()
+    .constructor< std::vector<std::string> >("Construct fingerprint collection from vector of fingerprints")
+    .constructor< std::string, bool >("Construct fingerprint collection from binary file")
     .method("size", &MorganFPS::size, "Size of the data in bytes")
     .method("tanimoto", &MorganFPS::tanimoto,
 	    "Similarity between two fingerprints in the collection")

@@ -4,11 +4,14 @@
 #' @name MorganFPS
 #' @title Morgan fingerprints collection
 #' @description Efficient structure for storing a set of Morgan fingerprints
-#' @field new Constructor
+#' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
+#'   format or a path to a binary file of fingerprints using the argument
+#'   `from_file = TRUE`
 #' @field tanimoto (i,j) similarity between fingerprints i and j
 #' @field tanimoto_all (i) similarity between fingerprint i and all others
 #' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 #'    fingerprints in the collection
+#' @field save_file (path) Save fingerprints to file in binary format
 #' @field size number of bytes used to store the fingerprints
 #' @export
 NULL
