@@ -77,3 +77,11 @@ test_that("Collection indexing is 1-based", {
 
     expect_length( m$tanimoto_all(1000), 1000 )
 })
+
+test_that("Collections can be saved to binary files", {
+    v <- load_example1(100)
+    m <- MorganFPS$new(v)
+    tmp <- tempfile()
+    m$save_file(tmp)
+    expect_equal(file.size(tmp), 25600)
+})

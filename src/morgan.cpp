@@ -1,5 +1,7 @@
 #include <Rcpp.h>
 #include <array>
+#include <iterator>
+#include <fstream>
 
 using Fingerprint = std::array<std::uint64_t, 32>;
 
@@ -124,6 +126,13 @@ public:
     return res;
   }
 
+  // Save binary fp file
+  void save_file(const std::string& filename) {
+    std::ofstream out_stream(filename, std::ios::out | std::ios::binary);
+    out_stream.write(reinterpret_cast<char*>(&fps[0]), size());
+    out_stream.close();
+  }
+
   // Size of the dataset
   int size() {
     return fps.size() * sizeof(Fingerprint);
@@ -151,5 +160,7 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
+    .method("save_file", &MorganFPS::save_file,
+	    "Save fingerprints to file in binary format")
     ;
 }
