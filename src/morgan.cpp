@@ -118,7 +118,11 @@ public:
       std::copy(buffer, buffer + bytes_read, reinterpret_cast<char*>(fps.data()) + ix);
       ix = ix + bytes_read;
       if (bytes_read < FP_READ_BUFFER) {
-        break;
+        if (gzeof(in_stream)) break;
+        else {
+          gzclose(in_stream);
+          Rcpp::stop("Error reading gzipped fingerprints. Bad file?");
+        }
       }
     }
     gzclose(in_stream);
