@@ -1,9 +1,12 @@
 #include <Rcpp.h>
+#include <zlib.h>
 #include <array>
-#include <iterator>
 #include <fstream>
 
 using Fingerprint = std::array<std::uint64_t, 32>;
+
+// Read 1k records at a time
+#define FP_READ_BUFFER sizeof(Fingerprint) * 1000
 
 
 // Parse a single hexadecimal character to its integer representation.
@@ -102,14 +105,23 @@ public:
 
   // Constructor accepts a file path to load fingerprints from binary file
   MorganFPS(const std::string& filename, const bool from_file) {
-    std::ifstream in_stream(filename, std::ios::binary);
-    in_stream.unsetf(std::ios::skipws);
-    in_stream.seekg(0, std::ios::end);
-    std::streampos file_size = in_stream.tellg();
-    in_stream.seekg(0, std::ios::beg);
-    fps.resize(file_size / sizeof(Fingerprint));
-    in_stream.read(reinterpret_cast<char*>(fps.data()), file_size);
-    in_stream.close();
+    gzFile in_stream = gzopen(filename.c_str(), "rb");
+    if (!in_stream) {
+      Rcpp::stop("gzopen of " + filename + " failed: " + strerror(errno));
+    }
+    int ix = 0;
+    int bytes_read;
+    char buffer[FP_READ_BUFFER];
+    while (1) {
+      bytes_read = gzread(in_stream, buffer, FP_READ_BUFFER);
+      fps.resize((ix + bytes_read) / sizeof(Fingerprint));
+      std::copy(buffer, buffer + bytes_read, reinterpret_cast<char*>(fps.data()) + ix);
+      ix = ix + bytes_read;
+      if (bytes_read < FP_READ_BUFFER) {
+        break;
+      }
+    }
+    gzclose(in_stream);
   }
 
   // Tanimoto similarity between drugs i and j
@@ -143,9 +155,9 @@ public:
 
   // Save binary fp file
   void save_file(const std::string& filename) {
-    std::ofstream out_stream(filename, std::ios::out | std::ios::binary);
-    out_stream.write(reinterpret_cast<char*>(fps.data()), size());
-    out_stream.close();
+    gzFile out_stream = gzopen(filename.c_str(), "wb8");
+    gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
+    gzclose(out_stream);
   }
 
   // Size of the dataset
