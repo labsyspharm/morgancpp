@@ -1,7 +1,12 @@
 #include <Rcpp.h>
+#include <zlib.h>
+#include <array>
+#include <fstream>
 
+using Fingerprint = std::array<std::uint64_t, 32>;
 
-using Fingerprint = std::array<unsigned long long, 32>;
+// Read 1k records at a time
+#define FP_READ_BUFFER sizeof(Fingerprint) * 1000
 
 
 // Parse a single hexadecimal character to its integer representation.
@@ -77,11 +82,14 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @name MorganFPS
 //' @title Morgan fingerprints collection
 //' @description Efficient structure for storing a set of Morgan fingerprints
-//' @field new Constructor
+//' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
+//'   format or a path to a binary file of fingerprints using the argument
+//'   `from_file = TRUE`
 //' @field tanimoto (i,j) similarity between fingerprints i and j
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
+//' @field save_file (path) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
 //' @export
 class MorganFPS {
@@ -93,6 +101,31 @@ public:
     for (auto&& hex : vhx) {
       fps.push_back(hex2fp(hex));
     }
+  }
+
+  // Constructor accepts a file path to load fingerprints from binary file
+  MorganFPS(const std::string& filename, const bool from_file) {
+    gzFile in_stream = gzopen(filename.c_str(), "rb");
+    if (!in_stream) {
+      Rcpp::stop("gzopen of " + filename + " failed: " + strerror(errno));
+    }
+    int ix = 0;
+    int bytes_read;
+    char buffer[FP_READ_BUFFER];
+    while (1) {
+      bytes_read = gzread(in_stream, buffer, FP_READ_BUFFER);
+      fps.resize((ix + bytes_read) / sizeof(Fingerprint));
+      std::copy(buffer, buffer + bytes_read, reinterpret_cast<char*>(fps.data()) + ix);
+      ix = ix + bytes_read;
+      if (bytes_read < FP_READ_BUFFER) {
+        if (gzeof(in_stream)) break;
+        else {
+          gzclose(in_stream);
+          Rcpp::stop("Error reading gzipped fingerprints. Bad file?");
+        }
+      }
+    }
+    gzclose(in_stream);
   }
 
   // Tanimoto similarity between drugs i and j
@@ -124,6 +157,13 @@ public:
     return res;
   }
 
+  // Save binary fp file
+  void save_file(const std::string& filename) {
+    gzFile out_stream = gzopen(filename.c_str(), "wb8");
+    gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
+    gzclose(out_stream);
+  }
+
   // Size of the dataset
   int size() {
     return fps.size() * sizeof(Fingerprint);
@@ -135,7 +175,6 @@ private:
 
 };
 
-
 // Expose all relevant classes through an Rcpp module
 RCPP_EXPOSED_CLASS(MorganFPS)
 RCPP_MODULE(morgan_cpp) {
@@ -143,7 +182,8 @@ RCPP_MODULE(morgan_cpp) {
   using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
-    .constructor< std::vector<std::string> >()
+    .constructor< std::vector<std::string> >("Construct fingerprint collection from vector of fingerprints")
+    .constructor< std::string, bool >("Construct fingerprint collection from binary file")
     .method("size", &MorganFPS::size, "Size of the data in bytes")
     .method("tanimoto", &MorganFPS::tanimoto,
 	    "Similarity between two fingerprints in the collection")
@@ -151,5 +191,7 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
+    .method("save_file", &MorganFPS::save_file,
+	    "Save fingerprints to file in binary format")
     ;
 }

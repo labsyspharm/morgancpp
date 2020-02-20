@@ -10,6 +10,6 @@ Depends: R (>= 3.5.0)
 Encoding: UTF-8
 LinkingTo: Rcpp
 Imports: Rcpp
-RoxygenNote: 7.0.0
+RoxygenNote: 7.0.2
 Suggests:
     testthat (>= 2.1.0)
