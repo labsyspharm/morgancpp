@@ -11,7 +11,8 @@
 #' @field tanimoto_all (i) similarity between fingerprint i and all others
 #' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 #'    fingerprints in the collection
-#' @field save_file (path) Save fingerprints to file in binary format
+NULL
+
 #' @field size number of bytes used to store the fingerprints
 #' @export
 NULL
