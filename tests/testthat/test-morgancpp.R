@@ -46,7 +46,7 @@ test_that("Collections can be queried for pairwise similarities", {
 test_that("Collections can be queried for full similarity profiles", {
     v <- load_example1(100)
     m <- MorganFPS$new(v)
-    v0 <- sapply( 1:100, function(i) m$tanimoto(1,i) )
+    v0 <- sapply( setNames( 1:100, as.character(1:100) ), function(i) m$tanimoto(1,i) )
     v1 <- m$tanimoto_all(1)
     v2 <- m$tanimoto_ext(v[1])
 
@@ -61,19 +61,19 @@ test_that("Collection indexing is 1-based", {
     m <- MorganFPS$new(v)
 
     ## Pair-wise function
-    expect_error( m$tanimoto(0,1), class = "std::out_of_range" )
-    expect_error( m$tanimoto(1,0), class = "std::out_of_range" )
-    expect_error( m$tanimoto(-1,1), class = "std::out_of_range" )
-    expect_error( m$tanimoto(1,-1), class = "std::out_of_range" )
-    expect_error( m$tanimoto(1001,1), class = "std::out_of_range" )
-    expect_error( m$tanimoto(1,1001), class = "std::out_of_range" )
+    expect_error( m$tanimoto(0,1), "not found" )
+    expect_error( m$tanimoto(1,0), "not found" )
+    expect_error( m$tanimoto(-1,1), "not found" )
+    expect_error( m$tanimoto(1,-1), "not found" )
+    expect_error( m$tanimoto(1001,1), "not found" )
+    expect_error( m$tanimoto(1,1001), "not found" )
 
     expect_identical( m$tanimoto(1000,1000), 1 )
 
     ## Full-profile function
-    expect_error( m$tanimoto_all(-1), class = "std::out_of_range" )
-    expect_error( m$tanimoto_all(0), class = "std::out_of_range" )
-    expect_error( m$tanimoto_all(1001), class = "std::out_of_range" )
+    expect_error( m$tanimoto_all(-1), "not found" )
+    expect_error( m$tanimoto_all(0), "not found" )
+    expect_error( m$tanimoto_all(1001), "not found" )
 
     expect_length( m$tanimoto_all(1000), 1000 )
 })
