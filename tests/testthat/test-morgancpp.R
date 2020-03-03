@@ -46,14 +46,14 @@ test_that("Collections can be queried for pairwise similarities", {
 test_that("Collections can be queried for full similarity profiles", {
     v <- load_example1(100)
     m <- MorganFPS$new(v)
-    v0 <- sapply( setNames( 1:100, as.character(1:100) ), function(i) m$tanimoto(1,i) )
+    v0 <- sapply( 1:100, function(i) m$tanimoto(1,i) )
     v1 <- m$tanimoto_all(1)
     v2 <- m$tanimoto_ext(v[1])
 
-    expect_length( v1, 100 )
-    expect_length( v2, 100 )
-    expect_identical( v0, v1 )
-    expect_identical( v0, v2 )
+    expect_equal( nrow(v1), 100 )
+    expect_equal( nrow(v2), 100 )
+    expect_identical( v0, v1[["structural_similarity"]] )
+    expect_identical( v0, v2[["structural_similarity"]] )
 })
 
 test_that("Collection indexing is 1-based", {
@@ -75,7 +75,7 @@ test_that("Collection indexing is 1-based", {
     expect_error( m$tanimoto_all(0), "not found" )
     expect_error( m$tanimoto_all(1001), "not found" )
 
-    expect_length( m$tanimoto_all(1000), 1000 )
+    expect_equal( nrow(m$tanimoto_all(1000)), 1000 )
 })
 
 test_that("Collections can be saved to and loaded from binary files", {

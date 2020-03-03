@@ -6,7 +6,7 @@
 #include <algorithm>
 
 using Fingerprint = std::array<std::uint64_t, 32>;
-using FingerprintName = std::uint64_t;
+using FingerprintName = std::int32_t;
 
 // Parse a single hexadecimal character to its integer representation.
 int parse_hex_char(const char& c) {
@@ -88,7 +88,7 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
-// //' @field save_file (path) Save fingerprints to file in binary format
+//' @field save_file (path) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
 //' @export
 class MorganFPS {
@@ -97,25 +97,29 @@ public:
 
   // Constructor accepts a named character vector of hex strings
   MorganFPS(Rcpp::CharacterVector fps_hex) {
+    size_t n = fps_hex.length();
     Rcpp::RObject passed_names = fps_hex.names();
-
-    fps.reserve(fps_hex.length());
-    fp_names.reserve(fps_hex.length());
+    fps.reserve(n);
+    fp_names.reserve(n);
     if(passed_names.isNULL()) {
-      for (FingerprintName i = 0; i < fps_hex.length(); i++) {
+      for (FingerprintName i = 0; i < n; i++) {
         fp_names.push_back(i + 1);
       }
     } else {
       Rcpp::CharacterVector passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(passed_names);
-      if (Rcpp::unique(passed_names_vec).length() != fps_hex.length())
+      if (Rcpp::unique(passed_names_vec).length() != n)
         Rcpp::stop("Names must be unique");
-      Rcpp::IntegerVector idx = Rcpp::seq_along(passed_names_vec) - 1;
-      std::sort(idx.begin(), idx.end(), [&](int i, int j){return passed_names_vec[i] < passed_names_vec[j];});
-      passed_names_vec = passed_names_vec[idx];
-      fps_hex = fps_hex[idx];
       for (Rcpp::CharacterVector::iterator i = passed_names_vec.begin(); i != passed_names_vec.end(); i++) {
         fp_names.push_back(std::stoll(std::string(*i)));
       }
+      Rcpp::IntegerVector idx = Rcpp::seq_along(passed_names_vec) - 1;
+      std::sort(idx.begin(), idx.end(), [&](int i, int j){return passed_names_vec[i] < passed_names_vec[j];});
+      std::vector<FingerprintName> fp_names_sorted(n);
+      for (auto &i : idx) {
+        fp_names_sorted.push_back(fp_names[i]);
+      }
+      fp_names = fp_names_sorted;
+      fps_hex = fps_hex[idx];
     }
     for (Rcpp::CharacterVector::iterator i = fps_hex.begin(); i != fps_hex.end(); i++) {
       fps.push_back(hex2fp(std::string(*i)));
@@ -152,26 +156,30 @@ public:
   }
 
   // Tanimoto similarity of drug i to every other drug
-  Rcpp::NumericVector tanimoto_all(FingerprintName &i) {
+  Rcpp::DataFrame tanimoto_all(FingerprintName &i) {
     const Fingerprint& fp_other = fp_index(i);
     Rcpp::NumericVector res(fps.size());
-    res.names() = fp_names;
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
     }
-    return res;
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id") = fp_names,
+      Rcpp::Named("structural_similarity") = res
+    );
   }
 
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
-  Rcpp::NumericVector tanimoto_ext(const std::string& other) {
+  Rcpp::DataFrame tanimoto_ext(const std::string& other) {
     const Fingerprint& fp_other = hex2fp(other);
     Rcpp::NumericVector res(fps.size());
-    res.names() = fp_names;
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
     }
-    return res;
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id") = fp_names,
+      Rcpp::Named("structural_similarity") = res
+    );
   }
 
   // Save binary fp file
