@@ -7,6 +7,7 @@
 
 using Fingerprint = std::array<std::uint64_t, 32>;
 using FingerprintName = std::int32_t;
+using FingerprintN = std::uint64_t;
 
 // Parse a single hexadecimal character to its integer representation.
 int parse_hex_char(const char& c) {
@@ -114,8 +115,9 @@ public:
         fp_names.push_back(std::stoll(std::string(*i)));
       }
       Rcpp::IntegerVector idx = Rcpp::seq_along(passed_names_vec) - 1;
-      std::sort(idx.begin(), idx.end(), [&](int i, int j){return passed_names_vec[i] < passed_names_vec[j];});
-      std::vector<FingerprintName> fp_names_sorted(n);
+      std::sort(idx.begin(), idx.end(), [&](int i, int j){return fp_names[i] < fp_names[j];});
+      std::vector<FingerprintName> fp_names_sorted;
+      fp_names_sorted.reserve(n);
       for (auto &i : idx) {
         fp_names_sorted.push_back(fp_names[i]);
       }
@@ -133,8 +135,8 @@ public:
     if (!in_stream) {
       Rcpp::stop("gzopen of " + filename + " failed: " + strerror(errno));
     }
-    size_t n;
-    gzread(in_stream, reinterpret_cast<char*>(&n), sizeof(size_t));
+    FingerprintN n;
+    gzread(in_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
     fps.resize(n);
     fp_names.resize(n);
     int bytes_read;
@@ -186,8 +188,8 @@ public:
   // Save binary fp file
   void save_file(const std::string& filename) {
     gzFile out_stream = gzopen(filename.c_str(), "wb8");
-    size_t n = fps.size();
-    gzwrite(out_stream, reinterpret_cast<char*>(&n), sizeof(size_t));
+    FingerprintN n = fps.size();
+    gzwrite(out_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
     gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
     gzwrite(out_stream, reinterpret_cast<char*>(fp_names.data()), fps.size() * sizeof(FingerprintName));
     gzclose(out_stream);

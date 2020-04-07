@@ -88,3 +88,13 @@ test_that("Collections can be saved to and loaded from binary files", {
     expect_equal(m2$size(), 25600)
     expect_equal(m$tanimoto_all(1), m2$tanimoto_all(1))
 })
+
+test_that("Fingerprint ids are respected", {
+    set.seed(42)
+    v <- load_example1(100)
+    vn <- sample(1:1000, 100)
+    names(v) <- vn
+    m <- MorganFPS$new(v)
+    res <- m$tanimoto_all(vn[[1]])
+    expect_equal(res[["id"]], sort(vn))
+})
