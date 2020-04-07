@@ -2,4 +2,5 @@
 
 export(MorganFPS)
 export(tanimoto)
+importFrom(Rcpp,cpp_object_initializer)
 useDynLib(morgancpp)

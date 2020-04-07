@@ -90,6 +90,7 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //'    fingerprints in the collection
 //' @field save_file (path) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
+//' @importFrom Rcpp cpp_object_initializer
 //' @export
 class MorganFPS {
 
