@@ -20,7 +20,7 @@ format or a path to a binary file of fingerprints using the argument
 \item{\code{tanimoto_ext}}{(s) similarity between external hexadecimal string s and all
 fingerprints in the collection}
 
-\item{\code{save_file}}{(path) Save fingerprints to file in binary format}
+\item{\code{save_file}}{(path, compression_level) Save fingerprints to file in binary format}
 
 \item{\code{size}}{number of bytes used to store the fingerprints}
 }}

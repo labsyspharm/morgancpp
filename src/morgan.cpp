@@ -89,7 +89,7 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
-//' @field save_file (path) Save fingerprints to file in binary format
+//' @field save_file (path, compression_level) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
 //' @importFrom Rcpp cpp_object_initializer
 //' @export
@@ -185,9 +185,17 @@ public:
     );
   }
 
-  // Save binary fp file
   void save_file(const std::string& filename) {
-    gzFile out_stream = gzopen(filename.c_str(), "wb8");
+    save_file(filename, 8);
+  }
+
+  // Save binary fp file
+  void save_file(const std::string& filename, const int& compression_level=8) {
+    if (compression_level < -1 || compression_level > 9)
+      Rcpp::stop("Compression level must be between -1 and 9");
+    char out_mode [4];
+    sprintf(out_mode, "wb%i", compression_level);
+    gzFile out_stream = gzopen(filename.c_str(), out_mode);
     FingerprintN n = fps.size();
     gzwrite(out_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
     gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
@@ -229,7 +237,9 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
-    .method("save_file", &MorganFPS::save_file,
+    .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file),
+	    "Save fingerprints to file in binary format")
+    .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file),
 	    "Save fingerprints to file in binary format")
     ;
 }
