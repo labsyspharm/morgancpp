@@ -1,4 +1,7 @@
-# morgancpp: Efficient structure for storing and comparing Morgan fingerprints
+morgancpp: Efficient structure for storing and comparing Morgan
+fingerprints
+================
+4/27/2020
 
 ## Installation
 
@@ -6,10 +9,11 @@ The package can be installed directly from GitHub:
 
 ``` r
 if( !require(devtools) ) install.packages("devtools")
-devtools::install_github("ArtemSokolov/morgancpp")
+devtools::install_github("labsyspharm/morgancpp")
 ```
 
-Once installed, the package can be loaded through the standard `library()` interface:
+Once installed, the package can be loaded through the standard
+`library()` interface:
 
 ``` r
 library( morgancpp )
@@ -17,58 +21,110 @@ library( morgancpp )
 
 ## Example data
 
-The package works with Morgan fingerprints specified as hexadecimal strings of length 512.
-An example set of 100,000 fingerprints is included with the package. It can be loaded as follows:
+The package works with Morgan fingerprints specified as hexadecimal
+strings of length 512. An example set of 100,000 fingerprints is
+included with the package. It can be loaded as follows:
 
 ``` r
 fn <- system.file( "examples/example1.txt.gz", package="morgancpp" )
 fps <- scan( fn, what=character() )
-# [1] "020000000000000000000100...
-# [2] "020004000000000000808101...
-# [3] "200000000000000000000000...
 ```
+
+    ## [1] "02000000000000000000010000100000000000000000000000000000020000000000000802000000..."
+    ## [2] "02000400000000000080810100008000000000000000000000000040082000000400000800000000..."
+    ## [3] "20000000000000000000000000000000000000000000000040000000000000080020000000000020..."
 
 ## Computing similarity of fingerprints
 
-The tanimoto similarity can be computed directly on hexadecimal strings:
+The tanimoto similarity can be computed directly on hexadecimal
+    strings:
 
 ``` r
-tanimoto( fps[1], fps[1] )    # 1
-tanimoto( fps[1], fps[2] )    # 0.1627907
-tanimoto( fps[1], "FFF" )
-# Error in tanimoto(fps[1], "FFF") : Input hex string must be of length 512
+tanimoto( fps[1], fps[1] )
 ```
 
-However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an effcient manner and query that structure for similarity:
+    ## [1] 1
+
+``` r
+tanimoto( fps[1], fps[2] )
+```
+
+    ## [1] 0.1627907
+
+``` r
+tanimoto( fps[1], "FFF" )
+```
+
+    ## Error in tanimoto(fps[1], "FFF"): Input hex string must be of length 512
+
+However, doing this for a large number of fingerprints will be slow.
+Instead, we can initialize the c++ data structure to store fingerprints
+in an effcient manner and query that structure for similarity:
 
 ``` r
 m <- MorganFPS$new( fps )
-# C++ object <0x559fa18f2c40> of class 'MorganFPS' <0x559fa484d570>
-
 object.size(fps)
-57467704 bytes
-
-m$size()
-[1] 25600000
 ```
 
-Similarity between fingerprints in the structure can be computed by indexing:
+    ## 57467704 bytes
 
 ``` r
-m$tanimoto( 1, 1 )   # 1
-m$tanimoto( 1, 2 )   # 0.1627907
+m$size()
 ```
 
-The entire similarity profile against all other fingerprints in the collection can be obtained for compounds already in the collection (specified as index `i`) or new external compounds (specified as hexadecimal strings):
+    ## [1] 25600000
+
+Similarity between fingerprints in the structure can be computed by
+indexing:
+
+``` r
+m$tanimoto( 1, 1 )
+```
+
+    ## [1] 1
+
+``` r
+m$tanimoto( 1, 2 )
+```
+
+    ## [1] 0.1627907
+
+The entire similarity profile against all other fingerprints in the
+collection can be obtained for compounds already in the collection
+(specified as index `i`) or new external compounds (specified as
+hexadecimal
+strings):
 
 ``` r
 res1 <- m$tanimoto_all( 1 )       # Compound 1 against all 100,000 fingerprints
+```
+
+| id | structural\_similarity |
+| -: | ---------------------: |
+|  1 |              1.0000000 |
+|  2 |              0.1627907 |
+|  3 |              0.0957447 |
+|  4 |              0.0930233 |
+|  5 |              0.2179487 |
+|  6 |              0.0750000 |
+
+``` r
 res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 fingerprints
 ```
 
+| id | structural\_similarity |
+| -: | ---------------------: |
+|  1 |              1.0000000 |
+|  2 |              0.1627907 |
+|  3 |              0.0957447 |
+|  4 |              0.0930233 |
+|  5 |              0.2179487 |
+|  6 |              0.0750000 |
+
 ## Additional documentation
 
-Obtaining additional information about functionality of the package can be done through the standard R interface:
+Obtaining additional information about functionality of the package can
+be done through the standard R interface:
 
 ``` r
 # All available functions

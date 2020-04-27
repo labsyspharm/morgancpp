@@ -1,0 +1,98 @@
+---
+title: "morgancpp: Efficient structure for storing and comparing Morgan fingerprints"
+date: "4/27/2020"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installation
+
+The package can be installed directly from GitHub:
+
+```{r, echo = TRUE, eval = FALSE}
+if( !require(devtools) ) install.packages("devtools")
+devtools::install_github("labsyspharm/morgancpp")
+```
+
+Once installed, the package can be loaded through the standard `library()` interface:
+
+```{r}
+library( morgancpp )
+```
+
+## Example data
+
+The package works with Morgan fingerprints specified as hexadecimal strings of length 512.
+An example set of 100,000 fingerprints is included with the package. It can be loaded as follows:
+
+```{r}
+fn <- system.file( "examples/example1.txt.gz", package="morgancpp" )
+fps <- scan( fn, what=character() )
+```
+
+```{r, echo = FALSE}
+paste0(substr(fps, start = 0, stop = 80), "...")[1:3]
+```
+
+## Computing similarity of fingerprints
+
+The tanimoto similarity can be computed directly on hexadecimal strings:
+
+```{r, error = TRUE}
+tanimoto( fps[1], fps[1] )
+tanimoto( fps[1], fps[2] )
+tanimoto( fps[1], "FFF" )
+```
+
+However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an effcient manner and query that structure for similarity:
+
+```{r}
+m <- MorganFPS$new( fps )
+object.size(fps)
+m$size()
+```
+
+Similarity between fingerprints in the structure can be computed by indexing:
+
+```{r}
+m$tanimoto( 1, 1 )
+m$tanimoto( 1, 2 )
+```
+
+The entire similarity profile against all other fingerprints in the collection can be obtained for compounds already in the collection (specified as index `i`) or new external compounds (specified as hexadecimal strings):
+
+```{r}
+res1 <- m$tanimoto_all( 1 )       # Compound 1 against all 100,000 fingerprints
+```
+
+```{r, echo = FALSE, results = "asis"}
+kable(head(res1), label = "res1")
+```
+
+```{r}
+res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 fingerprints
+```
+
+```{r, echo = FALSE, results = "asis"}
+kable(head(res2), label = "res2")
+```
+
+## Additional documentation
+
+Obtaining additional information about functionality of the package can be done through the standard R interface:
+
+```{r, echo = TRUE, eval = FALSE}
+# All available functions
+library( help = morgancpp )
+
+# Help for individual functions / data structures
+?morgancpp::tanimoto
+?morgancpp::MorganFPS
+
+# C++ docstrings providing full signatures of each method
+morgancpp::MorganFPS
+```

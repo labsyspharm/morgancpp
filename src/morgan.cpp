@@ -2,12 +2,12 @@
 #include <zlib.h>
 #include <array>
 #include <fstream>
+#include <string>
+#include <algorithm>
 
 using Fingerprint = std::array<std::uint64_t, 32>;
-
-// Read 1k records at a time
-#define FP_READ_BUFFER sizeof(Fingerprint) * 1000
-
+using FingerprintName = std::int32_t;
+using FingerprintN = std::uint64_t;
 
 // Parse a single hexadecimal character to its integer representation.
 int parse_hex_char(const char& c) {
@@ -89,17 +89,43 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
-//' @field save_file (path) Save fingerprints to file in binary format
+//' @field save_file (path, compression_level) Save fingerprints to file in binary format
 //' @field size number of bytes used to store the fingerprints
+//' @importFrom Rcpp cpp_object_initializer
 //' @export
 class MorganFPS {
 
 public:
 
-  // Constructor accepts a character vector of hex strings
-  MorganFPS(const std::vector<std::string>& vhx) {
-    for (auto&& hex : vhx) {
-      fps.push_back(hex2fp(hex));
+  // Constructor accepts a named character vector of hex strings
+  MorganFPS(Rcpp::CharacterVector fps_hex) {
+    size_t n = fps_hex.length();
+    Rcpp::RObject passed_names = fps_hex.names();
+    fps.reserve(n);
+    fp_names.reserve(n);
+    if(passed_names.isNULL()) {
+      for (FingerprintName i = 0; i < n; i++) {
+        fp_names.push_back(i + 1);
+      }
+    } else {
+      Rcpp::CharacterVector passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(passed_names);
+      if (Rcpp::unique(passed_names_vec).length() != n)
+        Rcpp::stop("Names must be unique");
+      for (Rcpp::CharacterVector::iterator i = passed_names_vec.begin(); i != passed_names_vec.end(); i++) {
+        fp_names.push_back(std::stoll(std::string(*i)));
+      }
+      Rcpp::IntegerVector idx = Rcpp::seq_along(passed_names_vec) - 1;
+      std::sort(idx.begin(), idx.end(), [&](int i, int j){return fp_names[i] < fp_names[j];});
+      std::vector<FingerprintName> fp_names_sorted;
+      fp_names_sorted.reserve(n);
+      for (auto &i : idx) {
+        fp_names_sorted.push_back(fp_names[i]);
+      }
+      fp_names = fp_names_sorted;
+      fps_hex = fps_hex[idx];
+    }
+    for (Rcpp::CharacterVector::iterator i = fps_hex.begin(); i != fps_hex.end(); i++) {
+      fps.push_back(hex2fp(std::string(*i)));
     }
   }
 
@@ -109,58 +135,71 @@ public:
     if (!in_stream) {
       Rcpp::stop("gzopen of " + filename + " failed: " + strerror(errno));
     }
-    int ix = 0;
+    FingerprintN n;
+    gzread(in_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
+    fps.resize(n);
+    fp_names.resize(n);
     int bytes_read;
-    char buffer[FP_READ_BUFFER];
-    while (1) {
-      bytes_read = gzread(in_stream, buffer, FP_READ_BUFFER);
-      fps.resize((ix + bytes_read) / sizeof(Fingerprint));
-      std::copy(buffer, buffer + bytes_read, reinterpret_cast<char*>(fps.data()) + ix);
-      ix = ix + bytes_read;
-      if (bytes_read < FP_READ_BUFFER) {
-        if (gzeof(in_stream)) break;
-        else {
-          gzclose(in_stream);
-          Rcpp::stop("Error reading gzipped fingerprints. Bad file?");
-        }
-      }
+    bytes_read = gzread(in_stream, reinterpret_cast<char*>(fps.data()), n * sizeof(Fingerprint));
+    if (bytes_read != n * sizeof(Fingerprint)) {
+      gzclose(in_stream);
+      Rcpp::stop("Error reading gzipped fingerprints. Bad file?");
+    }
+    bytes_read = gzread(in_stream, reinterpret_cast<char*>(fp_names.data()), n * sizeof(FingerprintName));
+    if ((bytes_read != n * sizeof(FingerprintName))) {
+      gzclose(in_stream);
+      Rcpp::stop("Error reading gzipped fingerprint names. Bad file?");
     }
     gzclose(in_stream);
   }
 
   // Tanimoto similarity between drugs i and j
-  // Adjust for 0-based indexing
-  double tanimoto(int i, int j) {
-    return jaccard_fp(fps.at(i-1), fps.at(j-1));
+  double tanimoto(FingerprintName &i, FingerprintName &j) {
+    return jaccard_fp(fp_index(i), fp_index(j));
   }
 
   // Tanimoto similarity of drug i to every other drug
-  std::vector<double> tanimoto_all(int i) {
-    const Fingerprint& fp_other = fps.at(i-1);
-    std::vector<double> res;
-    res.reserve(fps.size());
-    for (auto&& fp : fps) {
-      res.push_back(jaccard_fp(fp, fp_other));
+  Rcpp::DataFrame tanimoto_all(FingerprintName &i) {
+    const Fingerprint& fp_other = fp_index(i);
+    Rcpp::NumericVector res(fps.size());
+    for (int i = 0; i < fps.size(); i++) {
+      res[i] = jaccard_fp(fps[i], fp_other);
     }
-    return res;
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id") = fp_names,
+      Rcpp::Named("structural_similarity") = res
+    );
   }
 
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
-  std::vector<double> tanimoto_ext(const std::string& other) {
+  Rcpp::DataFrame tanimoto_ext(const std::string& other) {
     const Fingerprint& fp_other = hex2fp(other);
-    std::vector<double> res;
-    res.reserve(fps.size());
-    for (auto&& fp : fps) {
-      res.push_back(jaccard_fp(fp, fp_other));
+    Rcpp::NumericVector res(fps.size());
+    for (int i = 0; i < fps.size(); i++) {
+      res[i] = jaccard_fp(fps[i], fp_other);
     }
-    return res;
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id") = fp_names,
+      Rcpp::Named("structural_similarity") = res
+    );
+  }
+
+  void save_file(const std::string& filename) {
+    save_file(filename, 8);
   }
 
   // Save binary fp file
-  void save_file(const std::string& filename) {
-    gzFile out_stream = gzopen(filename.c_str(), "wb8");
+  void save_file(const std::string& filename, const int& compression_level=8) {
+    if (compression_level < -1 || compression_level > 9)
+      Rcpp::stop("Compression level must be between -1 and 9");
+    char out_mode [4];
+    sprintf(out_mode, "wb%i", compression_level);
+    gzFile out_stream = gzopen(filename.c_str(), out_mode);
+    FingerprintN n = fps.size();
+    gzwrite(out_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
     gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
+    gzwrite(out_stream, reinterpret_cast<char*>(fp_names.data()), fps.size() * sizeof(FingerprintName));
     gzclose(out_stream);
   }
 
@@ -171,8 +210,15 @@ public:
 
 private:
 
-  std::vector<Fingerprint> fps;
+  Fingerprint& fp_index(FingerprintName &x) {
+    auto fp_pt = std::lower_bound(fp_names.begin(), fp_names.end(), x);
+    if (*fp_pt != x)
+      Rcpp::stop("Fingerprint %s not found", std::to_string(x).c_str());
+    return fps.at(fp_pt - fp_names.begin());
+  }
 
+  std::vector<Fingerprint> fps;
+  std::vector<FingerprintName> fp_names;
 };
 
 // Expose all relevant classes through an Rcpp module
@@ -182,7 +228,7 @@ RCPP_MODULE(morgan_cpp) {
   using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
-    .constructor< std::vector<std::string> >("Construct fingerprint collection from vector of fingerprints")
+    .constructor< CharacterVector >("Construct fingerprint collection from vector of fingerprints")
     .constructor< std::string, bool >("Construct fingerprint collection from binary file")
     .method("size", &MorganFPS::size, "Size of the data in bytes")
     .method("tanimoto", &MorganFPS::tanimoto,
@@ -191,7 +237,9 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
-    .method("save_file", &MorganFPS::save_file,
+    .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file),
+	    "Save fingerprints to file in binary format")
+    .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file),
 	    "Save fingerprints to file in binary format")
     ;
 }
