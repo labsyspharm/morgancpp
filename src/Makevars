@@ -1,1 +1,8 @@
-PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell
+PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell -pthread
+PKG_CPPFLAGS=-I. -Izstd
+PKG_LIBS=-L. -lzstd -lpthread
+
+$(SHLIB): libzstd.a
+
+libzstd.a:
+	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt) || exit 1;

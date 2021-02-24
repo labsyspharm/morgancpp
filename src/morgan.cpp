@@ -1,7 +1,9 @@
 #include <Rcpp.h>
-#include <zlib.h>
+#include "zstd/zstd.h"
 #include <array>
+#include <vector>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <algorithm>
 
@@ -131,26 +133,65 @@ public:
 
   // Constructor accepts a file path to load fingerprints from binary file
   MorganFPS(const std::string& filename, const bool from_file) {
-    gzFile in_stream = gzopen(filename.c_str(), "rb");
-    if (!in_stream) {
-      Rcpp::stop("gzopen of " + filename + " failed: " + strerror(errno));
+    std::ifstream in_stream;
+    in_stream.open(filename, std::ios::in | std::ios::binary | std::ios::ate);
+    std::streampos file_size = in_stream.tellg();
+    std::vector<char> compressed_buffer;
+
+    compressed_buffer.resize(9);
+    in_stream.seekg (0, in_stream.beg);
+    in_stream.read(compressed_buffer.data(), 9);
+    std::string magic (compressed_buffer.begin(), compressed_buffer.end());
+    if (magic != "MORGANFPS") {
+      Rcpp::stop("File is incompatible, doesn't start with 'MORGANFPS': '%s'", magic.c_str());
     }
+
     FingerprintN n;
-    gzread(in_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
+    in_stream.read(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
+    Rcpp::Rcout << "Reading " << n << " fingerprints from file\n";
     fps.resize(n);
     fp_names.resize(n);
-    int bytes_read;
-    bytes_read = gzread(in_stream, reinterpret_cast<char*>(fps.data()), n * sizeof(Fingerprint));
-    if (bytes_read != n * sizeof(Fingerprint)) {
-      gzclose(in_stream);
-      Rcpp::stop("Error reading gzipped fingerprints. Bad file?");
+    size_t out_size;
+
+    int size_next_block;
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(int));
+    Rcpp::Rcout << "Fingerprint block has " << size_next_block << " bytes\n";
+
+    out_size = n * sizeof(Fingerprint);
+    compressed_buffer.resize(size_next_block);
+    in_stream.read(compressed_buffer.data(), size_next_block);
+    Rcpp::Rcout << "Compressed fingerprints read\n";
+    int bytes_decompressed = ZSTD_decompress(
+      reinterpret_cast<char*>(fps.data()), out_size,
+      compressed_buffer.data(), size_next_block
+    );
+    if (bytes_decompressed != out_size) {
+      Rcpp::stop(
+        "Decompression error in fingerprints:\nExpected bytes: %i\nReceived bytes: %i",
+        out_size,
+        bytes_decompressed
+      );
     }
-    bytes_read = gzread(in_stream, reinterpret_cast<char*>(fp_names.data()), n * sizeof(FingerprintName));
-    if ((bytes_read != n * sizeof(FingerprintName))) {
-      gzclose(in_stream);
-      Rcpp::stop("Error reading gzipped fingerprint names. Bad file?");
+    Rcpp::Rcout << "Fingerprints decompressed\n";
+
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(int));
+    Rcpp::Rcout << "Names block has " << size_next_block << " bytes\n";
+
+    out_size = n * sizeof(FingerprintName);
+    compressed_buffer.resize(size_next_block);
+    in_stream.read(compressed_buffer.data(), size_next_block);
+    bytes_decompressed = ZSTD_decompress(
+      reinterpret_cast<char*>(fp_names.data()), out_size,
+      compressed_buffer.data(), size_next_block
+    );
+    if (bytes_decompressed != out_size) {
+      Rcpp::stop(
+        "Decompression error in names:\nExpected bytes: %i\nReceived bytes: %i",
+        n * sizeof(Fingerprint),
+        bytes_decompressed
+      );
     }
-    gzclose(in_stream);
+    Rcpp::Rcout << "Names decompressed\n";
   }
 
   // Tanimoto similarity between drugs i and j
@@ -190,23 +231,62 @@ public:
   }
 
   // Save binary fp file
-  void save_file(const std::string& filename, const int& compression_level=8) {
-    if (compression_level < -1 || compression_level > 9)
-      Rcpp::stop("Compression level must be between -1 and 9");
-    char out_mode [4];
-    sprintf(out_mode, "wb%i", compression_level);
-    gzFile out_stream = gzopen(filename.c_str(), out_mode);
+  void save_file(const std::string& filename, const int& compression_level=3) {
+    if (compression_level < 1 || compression_level > 22)
+      Rcpp::stop("Compression level must be between 0 and 22. Default = 3");
+
     FingerprintN n = fps.size();
-    gzwrite(out_stream, reinterpret_cast<char*>(&n), sizeof(FingerprintN));
-    gzwrite(out_stream, reinterpret_cast<char*>(fps.data()), size());
-    gzwrite(out_stream, reinterpret_cast<char*>(fp_names.data()), fps.size() * sizeof(FingerprintName));
-    gzclose(out_stream);
+    Rcpp::Rcout << "Wrinting " << n << " fingerprints\n";
+
+    std::ofstream out_stream;
+    out_stream.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
+    size_t input_size;
+
+    std::vector<char> out_buffer;
+
+    out_stream.write("MORGANFPS", 9);
+    out_stream.write(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
+
+    input_size = fps.size() * sizeof(Fingerprint);
+    out_buffer.resize(ZSTD_compressBound(input_size));
+    const int fingerprints_compressed = ZSTD_compress(
+      out_buffer.data(), out_buffer.size(),
+      reinterpret_cast<char *>(fps.data()), input_size,
+      compression_level
+    );
+
+    Rcpp::Rcout << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
+    // Save number of bytes of the compressed data. Important for finding
+    // second block with names for decompression
+    out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(int));
+    out_stream.write(out_buffer.data(), fingerprints_compressed);
+    Rcpp::Rcout << "Wrote fingerprints\n";
+
+    input_size = fp_names.size() * sizeof(FingerprintName);
+    out_buffer.resize(ZSTD_compressBound(input_size));
+    const int names_compressed = ZSTD_compress(
+      out_buffer.data(), out_buffer.size(),
+      reinterpret_cast<char *>(fp_names.data()), input_size,
+      compression_level
+    );
+
+    Rcpp::Rcout << "Names compressed " << names_compressed << " bytes\n";
+    // Save number of bytes of the compressed data. Important for finding
+    // second block with names for decompression
+    out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(int));
+    out_stream.write(out_buffer.data(), names_compressed);
+    Rcpp::Rcout << "Wrote Names\n";
+
+    out_stream.close();
   }
 
   // Size of the dataset
   int size() {
     return fps.size() * sizeof(Fingerprint);
   }
+
+  std::vector<Fingerprint> fps;
+  std::vector<FingerprintName> fp_names;
 
 private:
 
@@ -217,8 +297,6 @@ private:
     return fps.at(fp_pt - fp_names.begin());
   }
 
-  std::vector<Fingerprint> fps;
-  std::vector<FingerprintName> fp_names;
 };
 
 // Expose all relevant classes through an Rcpp module
@@ -241,5 +319,7 @@ RCPP_MODULE(morgan_cpp) {
 	    "Save fingerprints to file in binary format")
     .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file),
 	    "Save fingerprints to file in binary format")
+    .field_readonly("fingerprints", &MorganFPS::fps)
+    .field_readonly("names", &MorganFPS::fp_names)
     ;
 }
