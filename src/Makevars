@@ -1,8 +1,17 @@
-PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell -pthread
-PKG_CPPFLAGS=-I. -Izstd
-PKG_LIBS=-L. -lzstd -lpthread
+$(info The compilation root directory is: $(ROOT_DIR))
+$(info The name of the shared library to be created is: $(SHLIB))
 
-$(SHLIB): libzstd.a
+PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell
+PKG_CPPFLAGS=-Izstd -pthread
+PKG_LIBS=-L. -lzstd
 
-libzstd.a:
-	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt) || exit 1;
+LIBZSTD=libzstd.a
+
+.PHONY: all $(LIBZSTD)
+
+all: $(SHLIB)
+
+$(SHLIB): $(LIBZSTD)
+
+$(LIBZSTD):
+	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 VERBOSE=1 CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt libzstd.a && cp libzstd.a ..) || exit 1;
