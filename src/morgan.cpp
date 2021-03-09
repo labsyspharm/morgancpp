@@ -11,6 +11,29 @@ using Fingerprint = std::array<std::uint64_t, 32>;
 using FingerprintName = std::int32_t;
 using FingerprintN = std::uint64_t;
 
+size_t zstd_block_decompress(char * out_buffer, size_t out_size, char const * in_buffer, size_t in_size) {
+  size_t bytes_decompressed = 0;
+  size_t total_decompressed = 0;
+  size_t input_offset = 0;
+  size_t compressed_block_size = 0;
+  int i = 0;
+  while (total_decompressed < out_size & bytes_decompressed >= 0) {
+    i++;
+    Rcpp::Rcout << "Decompressing block " << i << "\n";
+    compressed_block_size = ZSTD_findFrameCompressedSize(in_buffer + input_offset, in_size - input_offset);
+    Rcpp::Rcout << "Compressed block size: " << compressed_block_size << "\n";
+    bytes_decompressed = ZSTD_decompress(
+      out_buffer + total_decompressed, out_size,
+      in_buffer + input_offset, compressed_block_size
+    );
+    if (bytes_decompressed < 0)
+      Rcpp::stop("Decompression error: %i", bytes_decompressed);
+    total_decompressed += bytes_decompressed;
+    input_offset += compressed_block_size;
+  };
+  return total_decompressed;
+};
+
 // Parse a single hexadecimal character to its integer representation.
 int parse_hex_char(const char& c) {
   int v;
@@ -161,7 +184,7 @@ public:
     compressed_buffer.resize(size_next_block);
     in_stream.read(compressed_buffer.data(), size_next_block);
     Rcpp::Rcout << "Compressed fingerprints read\n";
-    int bytes_decompressed = ZSTD_decompress(
+    int bytes_decompressed = zstd_block_decompress(
       reinterpret_cast<char*>(fps.data()), out_size,
       compressed_buffer.data(), size_next_block
     );
@@ -180,7 +203,7 @@ public:
     out_size = n * sizeof(FingerprintName);
     compressed_buffer.resize(size_next_block);
     in_stream.read(compressed_buffer.data(), size_next_block);
-    bytes_decompressed = ZSTD_decompress(
+    bytes_decompressed = zstd_block_decompress(
       reinterpret_cast<char*>(fp_names.data()), out_size,
       compressed_buffer.data(), size_next_block
     );
