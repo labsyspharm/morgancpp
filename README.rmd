@@ -14,14 +14,14 @@ knitr::opts_chunk$set(echo = TRUE)
 The package can be installed directly from GitHub:
 
 ```{r, echo = TRUE, eval = FALSE}
-if( !require(devtools) ) install.packages("devtools")
+if(!require(devtools)) install.packages("devtools")
 devtools::install_github("labsyspharm/morgancpp")
 ```
 
 Once installed, the package can be loaded through the standard `library()` interface:
 
 ```{r}
-library( morgancpp )
+library(morgancpp)
 ```
 
 ## Example data
@@ -30,8 +30,8 @@ The package works with Morgan fingerprints specified as hexadecimal strings of l
 An example set of 100,000 fingerprints is included with the package. It can be loaded as follows:
 
 ```{r}
-fn <- system.file( "examples/example1.txt.gz", package="morgancpp" )
-fps <- scan( fn, what=character() )
+fn <- system.file("examples/example1.txt.gz", package = "morgancpp")
+fps <- scan(fn, what = character())
 ```
 
 ```{r, echo = FALSE}
@@ -43,15 +43,15 @@ paste0(substr(fps, start = 0, stop = 80), "...")[1:3]
 The tanimoto similarity can be computed directly on hexadecimal strings:
 
 ```{r, error = TRUE}
-tanimoto( fps[1], fps[1] )
-tanimoto( fps[1], fps[2] )
-tanimoto( fps[1], "FFF" )
+tanimoto(fps[1], fps[1])
+tanimoto(fps[1], fps[2])
+tanimoto(fps[1], "FFF")
 ```
 
-However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an effcient manner and query that structure for similarity:
+However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an efficient manner and query that structure for similarity:
 
 ```{r}
-m <- MorganFPS$new( fps )
+m <- MorganFPS$new(fps)
 object.size(fps)
 m$size()
 ```
@@ -59,8 +59,8 @@ m$size()
 Similarity between fingerprints in the structure can be computed by indexing:
 
 ```{r}
-m$tanimoto( 1, 1 )
-m$tanimoto( 1, 2 )
+m$tanimoto(1, 1)
+m$tanimoto(1, 2)
 ```
 
 The entire similarity profile against all other fingerprints in the collection can be obtained for compounds already in the collection (specified as index `i`) or new external compounds (specified as hexadecimal strings):
@@ -73,12 +73,28 @@ res1 <- m$tanimoto_all( 1 )       # Compound 1 against all 100,000 fingerprints
 kable(head(res1), label = "res1")
 ```
 
+
 ```{r}
 res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 fingerprints
 ```
 
 ```{r, echo = FALSE, results = "asis"}
 kable(head(res2), label = "res2")
+```
+
+## Saving fingerprints
+
+Fingerprints can be stored on disk in a binary format supporting extremely fast writing
+and reading performance using [Zstandard](https://github.com/facebook/zstd)
+compression.
+
+```{r, echo = TRUE}
+tmp_file <- tempfile()
+
+m$save_file(tmp_file)
+
+m2 <- MorganFPS$new(tmp_file, from_file = TRUE)
+m2$size()
 ```
 
 ## Additional documentation
@@ -96,3 +112,4 @@ library( help = morgancpp )
 # C++ docstrings providing full signatures of each method
 morgancpp::MorganFPS
 ```
+

@@ -1,6 +1,3 @@
-$(info The compilation root directory is: $(ROOT_DIR))
-$(info The name of the shared library to be created is: $(SHLIB))
-
 PKG_CXXFLAGS=--std=c++14 -O2 -mpopcnt -mavx -mtune=haswell
 PKG_CPPFLAGS=-Izstd -pthread
 PKG_LIBS=-L. -lzstd
@@ -14,4 +11,4 @@ all: $(SHLIB)
 $(SHLIB): $(LIBZSTD)
 
 $(LIBZSTD):
-	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 VERBOSE=1 CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt libzstd.a && cp libzstd.a ..) || exit 1;
+	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt libzstd.a && cp libzstd.a ..) || exit 1;

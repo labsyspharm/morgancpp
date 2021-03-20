@@ -109,7 +109,9 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //' @description Efficient structure for storing a set of Morgan fingerprints
 //' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
 //'   format or a path to a binary file of fingerprints using the argument
-//'   `from_file = TRUE`
+//'   `from_file = TRUE`. The vector of fingerprints can optionally be named.
+//'   Names need to be coercible to integers. When querying, the indices i and j
+//'   refer to the given names.
 //' @field tanimoto (i,j) similarity between fingerprints i and j
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
@@ -250,7 +252,7 @@ public:
   }
 
   void save_file(const std::string& filename) {
-    save_file(filename, 8);
+    save_file(filename, 3);
   }
 
   // Save binary fp file
@@ -339,9 +341,9 @@ RCPP_MODULE(morgan_cpp) {
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
     .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file),
-	    "Save fingerprints to file in binary format")
+	    "Save fingerprints to file in binary format. Compression level between 0 and 22 (default 3).")
     .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file),
-	    "Save fingerprints to file in binary format")
+	    "Save fingerprints to file in binary format Compression level between 0 and 22 (default 3).")
     .field_readonly("fingerprints", &MorganFPS::fps)
     .field_readonly("names", &MorganFPS::fp_names)
     ;

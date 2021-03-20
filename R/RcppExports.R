@@ -6,7 +6,9 @@
 #' @description Efficient structure for storing a set of Morgan fingerprints
 #' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
 #'   format or a path to a binary file of fingerprints using the argument
-#'   `from_file = TRUE`
+#'   `from_file = TRUE`. The vector of fingerprints can optionally be named.
+#'   Names need to be coercible to integers. When querying, the indices i and j
+#'   refer to the given names.
 #' @field tanimoto (i,j) similarity between fingerprints i and j
 #' @field tanimoto_all (i) similarity between fingerprint i and all others
 #' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
