@@ -11,27 +11,50 @@ using Fingerprint = std::array<std::uint64_t, 32>;
 using FingerprintName = std::int32_t;
 using FingerprintN = std::uint64_t;
 
-size_t zstd_block_decompress(char * out_buffer, size_t out_size, char const * in_buffer, size_t in_size) {
-  size_t bytes_decompressed = 0;
-  size_t total_decompressed = 0;
-  size_t input_offset = 0;
-  size_t compressed_block_size = 0;
-  int i = 0;
-  while (total_decompressed < out_size & bytes_decompressed >= 0) {
-    i++;
-    Rcpp::Rcout << "Decompressing block " << i << "\n";
-    compressed_block_size = ZSTD_findFrameCompressedSize(in_buffer + input_offset, in_size - input_offset);
-    Rcpp::Rcout << "Compressed block size: " << compressed_block_size << "\n";
-    bytes_decompressed = ZSTD_decompress(
-      out_buffer + total_decompressed, out_size,
-      in_buffer + input_offset, compressed_block_size
-    );
-    if (bytes_decompressed < 0)
-      Rcpp::stop("Decompression error: %i", bytes_decompressed);
-    total_decompressed += bytes_decompressed;
-    input_offset += compressed_block_size;
-  };
-  return total_decompressed;
+size_t zstd_frame_decompress(
+    std::ifstream &in_stream, size_t &compressed_size, std::vector<char> &out_buffer
+) {
+  std::vector<char> compressed_buffer;
+  // compressed_buffer.resize(ZSTD_FRAMEHEADERSIZE_MAX);
+  // std::streampos cur_pos = in_stream.tellg();
+  // in_stream.read(compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX);
+  // in_stream.seekg(cur_pos, std::ios_base::beg);
+  //
+  // unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
+  //   compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX
+  // );
+  compressed_buffer.resize(compressed_size);
+  in_stream.read(compressed_buffer.data(), compressed_size);
+  unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
+    compressed_buffer.data(), compressed_size
+  );
+  if (decompressed_size == ZSTD_CONTENTSIZE_ERROR || decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN) {
+    Rcpp::stop("Error finding decompressed frame size");
+  }
+
+  size_t const frame_compressed_size = ZSTD_findFrameCompressedSize(
+    compressed_buffer.data(), compressed_size
+  );
+  if (ZSTD_isError(frame_compressed_size)) {
+    Rcpp::stop("Error finding compressed frame size: %s", ZSTD_getErrorName(frame_compressed_size));
+  }
+  if (compressed_size != frame_compressed_size) {
+    Rcpp::stop("Inconsistent reported compressed sizes: %i and %i", compressed_size, frame_compressed_size);
+  }
+
+  out_buffer.resize(decompressed_size);
+  size_t const decompressed_bytes = ZSTD_decompress(
+    out_buffer.data(), decompressed_size,
+    compressed_buffer.data(), compressed_size
+  );
+  if (ZSTD_isError(decompressed_bytes)) {
+    Rcpp::stop("Error decompressing: %s", ZSTD_getErrorName(decompressed_bytes));
+  }
+  if (decompressed_bytes != decompressed_size) {
+    Rcpp::stop("Inconsistent decompressed size: Expected %i Actual %i", decompressed_size, decompressed_bytes);
+  }
+
+  return decompressed_size;
 };
 
 // Parse a single hexadecimal character to its integer representation.
@@ -159,16 +182,19 @@ public:
   // Constructor accepts a file path to load fingerprints from binary file
   MorganFPS(const std::string& filename, const bool from_file) {
     std::ifstream in_stream;
-    in_stream.open(filename, std::ios::in | std::ios::binary | std::ios::ate);
-    std::streampos file_size = in_stream.tellg();
-    std::vector<char> compressed_buffer;
+    in_stream.open(filename, std::ios::in | std::ios::binary);
 
-    compressed_buffer.resize(9);
-    in_stream.seekg (0, in_stream.beg);
-    in_stream.read(compressed_buffer.data(), 9);
-    std::string magic (compressed_buffer.begin(), compressed_buffer.end());
-    if (magic != "MORGANFPS") {
-      Rcpp::stop("File is incompatible, doesn't start with 'MORGANFPS': '%s'", magic.c_str());
+    // std::in_stream in_stream(filename, std::ios::in | std::ios::binary);
+    // std::vector<char> file_buffer(std::istreambuf_iterator<char>(input), {});
+    // std::vector<char> decompressed_buffer;
+
+    std::vector<char> decompressed_buffer;
+
+    char magic[] = "xORGANFPS";
+    in_stream.read(magic, 9);
+
+    if (strcmp(magic, "MORGANFPS") != 0) {
+      Rcpp::stop("File is incompatible, doesn't start with 'MORGANFPS': '%s'", magic);
     }
 
     FingerprintN n;
@@ -176,46 +202,34 @@ public:
     Rcpp::Rcout << "Reading " << n << " fingerprints from file\n";
     fps.resize(n);
     fp_names.resize(n);
-    size_t out_size;
 
-    int size_next_block;
-    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(int));
+    size_t size_next_block;
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
     Rcpp::Rcout << "Fingerprint block has " << size_next_block << " bytes\n";
 
-    out_size = n * sizeof(Fingerprint);
-    compressed_buffer.resize(size_next_block);
-    in_stream.read(compressed_buffer.data(), size_next_block);
-    Rcpp::Rcout << "Compressed fingerprints read\n";
-    int bytes_decompressed = zstd_block_decompress(
-      reinterpret_cast<char*>(fps.data()), out_size,
-      compressed_buffer.data(), size_next_block
+    size_t bytes_decompressed = zstd_frame_decompress(
+      in_stream, size_next_block, decompressed_buffer
     );
-    if (bytes_decompressed != out_size) {
-      Rcpp::stop(
-        "Decompression error in fingerprints:\nExpected bytes: %i\nReceived bytes: %i",
-        out_size,
-        bytes_decompressed
-      );
-    }
+
+    if (fps.size() * sizeof(Fingerprint) != bytes_decompressed) {
+      Rcpp::stop("Size of decompressed fingerprints differs from expected size.");
+    };
+
+    std::memcpy(reinterpret_cast<char*>(fps.data()), decompressed_buffer.data(), bytes_decompressed);
     Rcpp::Rcout << "Fingerprints decompressed\n";
 
-    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(int));
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
     Rcpp::Rcout << "Names block has " << size_next_block << " bytes\n";
 
-    out_size = n * sizeof(FingerprintName);
-    compressed_buffer.resize(size_next_block);
-    in_stream.read(compressed_buffer.data(), size_next_block);
-    bytes_decompressed = zstd_block_decompress(
-      reinterpret_cast<char*>(fp_names.data()), out_size,
-      compressed_buffer.data(), size_next_block
+    bytes_decompressed = zstd_frame_decompress(
+      in_stream, size_next_block, decompressed_buffer
     );
-    if (bytes_decompressed != out_size) {
-      Rcpp::stop(
-        "Decompression error in names:\nExpected bytes: %i\nReceived bytes: %i",
-        n * sizeof(Fingerprint),
-        bytes_decompressed
-      );
-    }
+
+    if (fp_names.size() * sizeof(FingerprintName) != bytes_decompressed) {
+      Rcpp::stop("Size of decompressed fingerprint names differs from expected size.");
+    };
+
+    std::memcpy(reinterpret_cast<char*>(fp_names.data()), decompressed_buffer.data(), bytes_decompressed);
     Rcpp::Rcout << "Names decompressed\n";
   }
 
@@ -269,45 +283,57 @@ public:
 
     std::vector<char> out_buffer;
 
+    // out_stream << "MORGANFPS";
     out_stream.write("MORGANFPS", 9);
     out_stream.write(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
 
     input_size = fps.size() * sizeof(Fingerprint);
     out_buffer.resize(ZSTD_compressBound(input_size));
-    const int fingerprints_compressed = ZSTD_compress(
+    const size_t fingerprints_compressed = ZSTD_compress(
       out_buffer.data(), out_buffer.size(),
       reinterpret_cast<char *>(fps.data()), input_size,
       compression_level
     );
+    if (ZSTD_isError(fingerprints_compressed)) {
+      Rcpp::stop("Error compressing fingerprints: %s", ZSTD_getErrorName(fingerprints_compressed));
+    }
 
     Rcpp::Rcout << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
-    out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(int));
+    out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), fingerprints_compressed);
     Rcpp::Rcout << "Wrote fingerprints\n";
 
     input_size = fp_names.size() * sizeof(FingerprintName);
     out_buffer.resize(ZSTD_compressBound(input_size));
-    const int names_compressed = ZSTD_compress(
+    const size_t names_compressed = ZSTD_compress(
       out_buffer.data(), out_buffer.size(),
       reinterpret_cast<char *>(fp_names.data()), input_size,
       compression_level
     );
+    if (ZSTD_isError(names_compressed)) {
+      Rcpp::stop("Error compressing fingerprint names: %s", ZSTD_getErrorName(names_compressed));
+    }
 
     Rcpp::Rcout << "Names compressed " << names_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
-    out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(int));
+    out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), names_compressed);
     Rcpp::Rcout << "Wrote Names\n";
 
     out_stream.close();
   }
 
-  // Size of the dataset
+  // Size of the dataset in bytes
   int size() {
     return fps.size() * sizeof(Fingerprint);
+  }
+
+  // Number of elements
+  size_t n() {
+    return fps.size();
   }
 
   std::vector<Fingerprint> fps;
@@ -334,6 +360,7 @@ RCPP_MODULE(morgan_cpp) {
     .constructor< CharacterVector >("Construct fingerprint collection from vector of fingerprints")
     .constructor< std::string, bool >("Construct fingerprint collection from binary file")
     .method("size", &MorganFPS::size, "Size of the data in bytes")
+    .method("n", &MorganFPS::n, "Number of elements")
     .method("tanimoto", &MorganFPS::tanimoto,
 	    "Similarity between two fingerprints in the collection")
     .method("tanimoto_all", &MorganFPS::tanimoto_all,
