@@ -199,13 +199,13 @@ public:
 
     FingerprintN n;
     in_stream.read(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
-    Rcpp::Rcout << "Reading " << n << " fingerprints from file\n";
+    Rcpp::Rcerr << "Reading " << n << " fingerprints from file\n";
     fps.resize(n);
     fp_names.resize(n);
 
     size_t size_next_block;
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcout << "Fingerprint block has " << size_next_block << " bytes\n";
+    Rcpp::Rcerr << "Fingerprint block has " << size_next_block << " bytes\n";
 
     size_t bytes_decompressed = zstd_frame_decompress(
       in_stream, size_next_block, decompressed_buffer
@@ -216,10 +216,10 @@ public:
     };
 
     std::memcpy(reinterpret_cast<char*>(fps.data()), decompressed_buffer.data(), bytes_decompressed);
-    Rcpp::Rcout << "Fingerprints decompressed\n";
+    Rcpp::Rcerr << "Fingerprints decompressed\n";
 
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcout << "Names block has " << size_next_block << " bytes\n";
+    Rcpp::Rcerr << "Names block has " << size_next_block << " bytes\n";
 
     bytes_decompressed = zstd_frame_decompress(
       in_stream, size_next_block, decompressed_buffer
@@ -230,7 +230,7 @@ public:
     };
 
     std::memcpy(reinterpret_cast<char*>(fp_names.data()), decompressed_buffer.data(), bytes_decompressed);
-    Rcpp::Rcout << "Names decompressed\n";
+    Rcpp::Rcerr << "Names decompressed\n";
   }
 
   // Tanimoto similarity between drugs i and j
@@ -275,7 +275,7 @@ public:
       Rcpp::stop("Compression level must be between 0 and 22. Default = 3");
 
     FingerprintN n = fps.size();
-    Rcpp::Rcout << "Wrinting " << n << " fingerprints\n";
+    Rcpp::Rcerr << "Wrinting " << n << " fingerprints\n";
 
     std::ofstream out_stream;
     out_stream.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -298,12 +298,12 @@ public:
       Rcpp::stop("Error compressing fingerprints: %s", ZSTD_getErrorName(fingerprints_compressed));
     }
 
-    Rcpp::Rcout << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
+    Rcpp::Rcerr << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), fingerprints_compressed);
-    Rcpp::Rcout << "Wrote fingerprints\n";
+    Rcpp::Rcerr << "Wrote fingerprints\n";
 
     input_size = fp_names.size() * sizeof(FingerprintName);
     out_buffer.resize(ZSTD_compressBound(input_size));
@@ -316,12 +316,12 @@ public:
       Rcpp::stop("Error compressing fingerprint names: %s", ZSTD_getErrorName(names_compressed));
     }
 
-    Rcpp::Rcout << "Names compressed " << names_compressed << " bytes\n";
+    Rcpp::Rcerr << "Names compressed " << names_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), names_compressed);
-    Rcpp::Rcout << "Wrote Names\n";
+    Rcpp::Rcerr << "Wrote Names\n";
 
     out_stream.close();
   }
