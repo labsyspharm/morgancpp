@@ -11,6 +11,33 @@ using Fingerprint = std::array<std::uint64_t, 32>;
 using FingerprintName = std::int32_t;
 using FingerprintN = std::uint64_t;
 
+FingerprintName convert_name(std::string x) {
+  unsigned long long temp;
+  try {
+    temp = std::stoll(x);
+  } catch (const std::invalid_argument& e) {
+      Rcpp::stop("Fingerprint names must be passed as strings of positive integers, e.g. c(\"1\", \"2\")");
+  } catch (...) {
+      Rcpp::stop("Unknown error converting Fingerprint names");
+  }
+  FingerprintName temp2 = (FingerprintName) temp;
+  return temp2;
+}
+
+FingerprintName convert_name(Rcpp::RObject& x) {
+  FingerprintName name;
+  if (Rcpp::is<Rcpp::CharacterVector>(x)) {
+    name = convert_name(Rcpp::as<std::string>(x));
+  } else if (Rcpp::is<Rcpp::IntegerVector>(x) || Rcpp::is<Rcpp::NumericVector>(x)) {
+    name = (FingerprintName) Rcpp::as<int>(x);
+  } else {
+    Rcpp::stop(
+      "Fingerprint indices (names) must be passed as positive integers, numerics, or strings representing integers."
+    );
+  }
+  return name;
+}
+
 size_t zstd_frame_decompress(
     std::ifstream &in_stream, size_t &compressed_size, std::vector<char> &out_buffer
 ) {
@@ -148,34 +175,41 @@ class MorganFPS {
 public:
 
   // Constructor accepts a named character vector of hex strings
-  MorganFPS(Rcpp::CharacterVector fps_hex) {
+  MorganFPS(const Rcpp::CharacterVector& fps_hex) {
     size_t n = fps_hex.length();
     Rcpp::RObject passed_names = fps_hex.names();
     fps.reserve(n);
     fp_names.reserve(n);
     if(passed_names.isNULL()) {
-      for (FingerprintName i = 0; i < n; i++) {
-        fp_names.push_back(i + 1);
+      for (int i = 0; i < n; i++) {
+        fp_names.push_back((FingerprintName) i + 1);
+        fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
       }
     } else {
-      Rcpp::CharacterVector passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(passed_names);
-      if (Rcpp::unique(passed_names_vec).length() != n)
-        Rcpp::stop("Names must be unique");
-      for (Rcpp::CharacterVector::iterator i = passed_names_vec.begin(); i != passed_names_vec.end(); i++) {
-        fp_names.push_back(std::stoll(std::string(*i)));
+      std::vector<FingerprintName> unsorted_names;
+      unsorted_names.reserve(n);
+      if (Rcpp::is<Rcpp::CharacterVector>(passed_names)) {
+        auto passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(passed_names);
+        for (auto& x: passed_names_vec)
+          unsorted_names.push_back(convert_name(Rcpp::as<std::string>(x)));
+      } else if (Rcpp::is<Rcpp::IntegerVector>(passed_names) || Rcpp::is<Rcpp::NumericVector>(passed_names)) {
+        unsorted_names = Rcpp::as< std::vector<FingerprintName> >(passed_names);
+      } else {
+        Rcpp::stop(
+          "Fingerprint indices (names) must be passed as positive integers, numerics, or strings representing integers."
+        );
       }
-      Rcpp::IntegerVector idx = Rcpp::seq_along(passed_names_vec) - 1;
-      std::sort(idx.begin(), idx.end(), [&](int i, int j){return fp_names[i] < fp_names[j];});
-      std::vector<FingerprintName> fp_names_sorted;
-      fp_names_sorted.reserve(n);
-      for (auto &i : idx) {
-        fp_names_sorted.push_back(fp_names[i]);
+      // Make vector that contains indices that sort the name vector
+      std::vector<size_t> sort_vector(n);
+      std::iota(sort_vector.begin(), sort_vector.end(), 0);
+      std::sort(
+        sort_vector.begin(), sort_vector.end(),
+        [&](const size_t i, const size_t j){return unsorted_names.at(i) < unsorted_names.at(j);}
+      );
+      for (auto &i: sort_vector) {
+        fp_names.push_back(unsorted_names.at(i));
+        fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
       }
-      fp_names = fp_names_sorted;
-      fps_hex = fps_hex[idx];
-    }
-    for (Rcpp::CharacterVector::iterator i = fps_hex.begin(); i != fps_hex.end(); i++) {
-      fps.push_back(hex2fp(std::string(*i)));
     }
   }
 
@@ -234,13 +268,13 @@ public:
   }
 
   // Tanimoto similarity between drugs i and j
-  double tanimoto(FingerprintName &i, FingerprintName &j) {
+  double tanimoto(Rcpp::RObject &i, Rcpp::RObject &j) {
     return jaccard_fp(fp_index(i), fp_index(j));
   }
 
   // Tanimoto similarity of drug i to every other drug
-  Rcpp::DataFrame tanimoto_all(FingerprintName &i) {
-    const Fingerprint& fp_other = fp_index(i);
+  Rcpp::DataFrame tanimoto_all(Rcpp::RObject &x) {
+    const Fingerprint fp_other = fp_index(x);
     Rcpp::NumericVector res(fps.size());
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
@@ -254,7 +288,7 @@ public:
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
   Rcpp::DataFrame tanimoto_ext(const std::string& other) {
-    const Fingerprint& fp_other = hex2fp(other);
+    const Fingerprint fp_other = hex2fp(other);
     Rcpp::NumericVector res(fps.size());
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
@@ -341,10 +375,11 @@ public:
 
 private:
 
-  Fingerprint& fp_index(FingerprintName &x) {
-    auto fp_pt = std::lower_bound(fp_names.begin(), fp_names.end(), x);
-    if (*fp_pt != x)
-      Rcpp::stop("Fingerprint %s not found", std::to_string(x).c_str());
+  Fingerprint& fp_index(Rcpp::RObject& x) {
+    FingerprintName x_name = convert_name(x);
+    auto fp_pt = std::lower_bound(fp_names.begin(), fp_names.end(), x_name);
+    if (*fp_pt != x_name)
+      Rcpp::stop("Fingerprint %u not found", x_name);
     return fps.at(fp_pt - fp_names.begin());
   }
 
@@ -357,8 +392,8 @@ RCPP_MODULE(morgan_cpp) {
   using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
-    .constructor< CharacterVector >("Construct fingerprint collection from vector of fingerprints")
-    .constructor< std::string, bool >("Construct fingerprint collection from binary file")
+    .constructor<Rcpp::CharacterVector>("Construct fingerprint collection from vector of fingerprints")
+    .constructor<std::string, bool>("Construct fingerprint collection from binary file")
     .method("size", &MorganFPS::size, "Size of the data in bytes")
     .method("n", &MorganFPS::n, "Number of elements")
     .method("tanimoto", &MorganFPS::tanimoto,
