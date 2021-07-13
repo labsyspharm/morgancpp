@@ -114,3 +114,30 @@ test_that("Duplicate fingerprints are rejected", {
     names(v) <- vn
     expect_error(MorganFPS$new(v), "Duplicate names are not allowed")
 })
+
+test_that("Subset queries are accurate", {
+    set.seed(42)
+    v <- load_example1(100)
+    vn <- c(1e09L, 1e03L, sample(1e09L, 98))
+    vn_s <- sort(vn)
+    names(v) <- vn
+    vn_x <- sample(vn, 10)
+    vn_y <- sample(vn, 20)
+    m <- MorganFPS$new(v)
+    res <- m$tanimoto_subset(vn_x, vn_y)
+    expect_equal(nrow(res), 200)
+    combos <- expand.grid(sort(vn_y), sort(vn_x))
+    manual_similarity <- with(
+        combos,
+        mapply(function(x, y) m$tanimoto(x, y), Var2, Var1)
+    )
+    expect_equal(res$structural_similarity, manual_similarity)
+    res <- m$tanimoto_subset(vn_x, NULL)
+    expect_equal(nrow(res), 1000)
+    combos <- expand.grid(sort(vn), sort(vn_x))
+    manual_similarity <- with(
+        combos,
+        mapply(function(x, y) m$tanimoto(x, y), Var2, Var1)
+    )
+    expect_equal(res$structural_similarity, manual_similarity)
+})

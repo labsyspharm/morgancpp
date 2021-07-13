@@ -11,6 +11,7 @@
 #'   refer to the given names.
 #' @field tanimoto (i,j) similarity between fingerprints i and j
 #' @field tanimoto_all (i) similarity between fingerprint i and all others
+#' @field tanimoto_subset (i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL
 #' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 #'    fingerprints in the collection
 #' @field save_file (path, compression_level) Save fingerprints to file in binary format

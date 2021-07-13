@@ -40,6 +40,51 @@ FingerprintName convert_name(Rcpp::RObject& x) {
   return name;
 }
 
+std::vector<FingerprintName> convert_name_vec(Rcpp::RObject& names) {
+  std::vector<FingerprintName> unsorted_names;
+  if (Rcpp::is<Rcpp::CharacterVector>(names)) {
+    auto passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(names);
+    unsorted_names.reserve(passed_names_vec.size());
+    for (auto& x: passed_names_vec)
+      unsorted_names.push_back(convert_name(Rcpp::as<std::string>(x)));
+  } else if (Rcpp::is<Rcpp::IntegerVector>(names) || Rcpp::is<Rcpp::NumericVector>(names)) {
+    unsorted_names = Rcpp::as< std::vector<FingerprintName> >(names);
+  } else {
+    Rcpp::stop(
+      "Fingerprint names must be passed as positive integers, numerics, or strings representing integers."
+    );
+  }
+  return unsorted_names;
+}
+
+std::vector<size_t> sort_indices(std::vector<FingerprintName>& unsorted_names) {
+  size_t n = unsorted_names.size();
+  // Make vector that contains indices that sort the given vector
+  std::vector<size_t> sort_vector(n);
+  std::iota(sort_vector.begin(), sort_vector.end(), 0);
+  std::sort(
+    sort_vector.begin(), sort_vector.end(),
+    [&](const size_t i, const size_t j){return unsorted_names.at(i) < unsorted_names.at(j);}
+  );
+  return sort_vector;
+}
+
+std::vector<FingerprintName> convert_sort_name_vec(Rcpp::RObject& names) {
+  auto unsorted_names = convert_name_vec(names);
+  auto sort_vector = sort_indices(unsorted_names);
+  std::vector<FingerprintName> sorted_names;
+  sorted_names.reserve(unsorted_names.size());
+  for (auto &i: sort_vector) {
+    sorted_names.push_back(unsorted_names.at(i));
+  }
+  // Checking for duplicate names
+  auto duplicate_pair = std::adjacent_find(sorted_names.begin(), sorted_names.end());
+  if (duplicate_pair != sorted_names.end()) {
+    Rcpp::stop("Duplicate names are not allowed");
+  }
+  return sorted_names;
+}
+
 size_t zstd_frame_decompress(
     std::ifstream &in_stream, size_t &compressed_size, std::vector<char> &out_buffer
 ) {
@@ -166,6 +211,7 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //'   refer to the given names.
 //' @field tanimoto (i,j) similarity between fingerprints i and j
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
+//' @field tanimoto_subset (i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
 //' @field save_file (path, compression_level) Save fingerprints to file in binary format
@@ -188,26 +234,9 @@ public:
         fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
       }
     } else {
-      std::vector<FingerprintName> unsorted_names;
-      unsorted_names.reserve(n);
-      if (Rcpp::is<Rcpp::CharacterVector>(passed_names)) {
-        auto passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(passed_names);
-        for (auto& x: passed_names_vec)
-          unsorted_names.push_back(convert_name(Rcpp::as<std::string>(x)));
-      } else if (Rcpp::is<Rcpp::IntegerVector>(passed_names) || Rcpp::is<Rcpp::NumericVector>(passed_names)) {
-        unsorted_names = Rcpp::as< std::vector<FingerprintName> >(passed_names);
-      } else {
-        Rcpp::stop(
-          "Fingerprint indices (names) must be passed as positive integers, numerics, or strings representing integers."
-        );
-      }
+      std::vector<FingerprintName> unsorted_names = convert_name_vec(passed_names);
       // Make vector that contains indices that sort the name vector
-      std::vector<size_t> sort_vector(n);
-      std::iota(sort_vector.begin(), sort_vector.end(), 0);
-      std::sort(
-        sort_vector.begin(), sort_vector.end(),
-        [&](const size_t i, const size_t j){return unsorted_names.at(i) < unsorted_names.at(j);}
-      );
+      std::vector<size_t> sort_vector = sort_indices(unsorted_names);
       for (auto &i: sort_vector) {
         fp_names.push_back(unsorted_names.at(i));
         fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
@@ -289,6 +318,48 @@ public:
     return Rcpp::DataFrame::create(
       Rcpp::Named("id") = fp_names,
       Rcpp::Named("structural_similarity") = res
+    );
+  }
+
+  // Tanimoto similarity of drug list vs the same or another drug list
+  Rcpp::DataFrame tanimoto_subset(Rcpp::RObject& x, Rcpp::RObject& y) {
+    auto x_names = convert_sort_name_vec(x);
+    auto x_fps = fp_index(x_names);
+    std::vector<FingerprintName> x_name;
+    std::vector<FingerprintName> y_name;
+    std::vector<double> similarity;
+    size_t n_total;
+    if (y.isNULL()) {
+      n_total = x_names.size() * n();
+      x_name.reserve(n_total);
+      y_name.reserve(n_total);
+      similarity.reserve(n_total);
+      for (int i = 0; i < x_names.size(); i++) {
+        for (int j = 0; j < n(); j++) {
+          x_name.push_back(x_names.at(i));
+          y_name.push_back(fp_names.at(j));
+          similarity.push_back(jaccard_fp(x_fps.at(i), fps.at(j)));
+        }
+      }
+    } else {
+      auto y_names = convert_sort_name_vec(y);
+      auto y_fps = fp_index(y_names);
+      n_total = x_names.size() * y_names.size();
+      x_name.reserve(n_total);
+      y_name.reserve(n_total);
+      similarity.reserve(n_total);
+      for (int i = 0; i < x_names.size(); i++) {
+        for (int j = 0; j < y_names.size(); j++) {
+          x_name.push_back(x_names.at(i));
+          y_name.push_back(y_names.at(j));
+          similarity.push_back(jaccard_fp(x_fps.at(i), y_fps.at(j)));
+        }
+      }
+    }
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id_1") = x_name,
+      Rcpp::Named("id_2") = y_name,
+      Rcpp::Named("structural_similarity") = similarity
     );
   }
 
@@ -392,6 +463,22 @@ private:
     return fps.at(fp_pt - fp_names.begin());
   }
 
+  std::vector<Fingerprint> fp_index(std::vector<FingerprintName>& names) {
+    std::vector<Fingerprint> hits;
+    hits.reserve(names.size());
+    auto last_idx = fp_names.begin();
+    std::vector<FingerprintName>::iterator cur_idx;
+    for (auto& x: names) {
+      cur_idx = std::lower_bound(last_idx, fp_names.end(), x);
+      if (*cur_idx != x)
+        Rcpp::stop("Fingerprint %u not found", x);
+      else
+        hits.push_back(fps.at(cur_idx - fp_names.begin()));
+        last_idx = cur_idx;
+    }
+    return hits;
+  }
+
 };
 
 // Expose all relevant classes through an Rcpp module
@@ -409,6 +496,8 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity between two fingerprints in the collection")
     .method("tanimoto_all", &MorganFPS::tanimoto_all,
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
+    .method("tanimoto_subset", &MorganFPS::tanimoto_subset,
+	    "Similarity of a set of fingerprints against another set or all other fingerprints in the collection.")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
 	    "Similarity of an external fingerprints against all fingerprints in the collection")
     .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file),
