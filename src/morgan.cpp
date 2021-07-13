@@ -12,16 +12,18 @@ using FingerprintName = std::int32_t;
 using FingerprintN = std::uint64_t;
 
 FingerprintName convert_name(std::string x) {
-  unsigned long long temp;
+  FingerprintName name;
   try {
-    temp = std::stoll(x);
+    // Converting to float first to cover cases where integers are passed as, e.g. 1e+07
+    name = static_cast<FingerprintName>(std::stold(x));
   } catch (const std::invalid_argument& e) {
-      Rcpp::stop("Fingerprint names must be passed as strings of positive integers, e.g. c(\"1\", \"2\")");
+      Rcpp::stop(
+        "Fingerprint names must be passed as positive integers, numerics, or strings representing integers."
+      );
   } catch (...) {
       Rcpp::stop("Unknown error converting Fingerprint names");
   }
-  FingerprintName temp2 = (FingerprintName) temp;
-  return temp2;
+  return name;
 }
 
 FingerprintName convert_name(Rcpp::RObject& x) {
@@ -29,7 +31,7 @@ FingerprintName convert_name(Rcpp::RObject& x) {
   if (Rcpp::is<Rcpp::CharacterVector>(x)) {
     name = convert_name(Rcpp::as<std::string>(x));
   } else if (Rcpp::is<Rcpp::IntegerVector>(x) || Rcpp::is<Rcpp::NumericVector>(x)) {
-    name = (FingerprintName) Rcpp::as<int>(x);
+    name = static_cast<FingerprintName>(Rcpp::as<int>(x));
   } else {
     Rcpp::stop(
       "Fingerprint indices (names) must be passed as positive integers, numerics, or strings representing integers."
@@ -210,6 +212,11 @@ public:
         fp_names.push_back(unsorted_names.at(i));
         fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
       }
+      // Checking for duplicate names
+      auto duplicate_pair = std::adjacent_find(fp_names.begin(), fp_names.end());
+      if (duplicate_pair != fp_names.end()) {
+        Rcpp::stop("Duplicate names are not allowed");
+      }
     }
   }
 
@@ -290,11 +297,13 @@ public:
   Rcpp::DataFrame tanimoto_ext(const std::string& other) {
     const Fingerprint fp_other = hex2fp(other);
     Rcpp::NumericVector res(fps.size());
+    Rcpp::IntegerVector fp_names_r(fps.size());
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
+      fp_names_r[i] = static_cast<int>(fp_names.at(i));
     }
     return Rcpp::DataFrame::create(
-      Rcpp::Named("id") = fp_names,
+      Rcpp::Named("id") = fp_names_r,
       Rcpp::Named("structural_similarity") = res
     );
   }

@@ -4,22 +4,6 @@ load_example1 <- function(n)
     scan( "../../inst/examples/example1.txt.gz", n=n,
          what=character(), quiet=TRUE )
 
-test_that("Large numerical names are correctly processed and sorted", {
-    set.seed(42)
-    v <- load_example1(3)
-    vn <- as.character(c(1e8L,1e7L, 1e9L))
-    names(v) <- vn
-    m <- MorganFPS$new(v)
-    res <- m$tanimoto_all(vn[[1]])
-    expect_equal(res[["id"]], sort(as.integer(vn)))
-    tmp <- tempfile()
-    m$save_file(tmp)
-    m2 <- MorganFPS$new(tmp, from_file = TRUE)
-    expect_equal(m2$size(), 768)
-    expect_equal(m$tanimoto_all(1e7L), m2$tanimoto_all(1e7L))
-})
-
-
 test_that("Self-similarity is always 1", {
     ## Test the first 100 strings from the example
     v <- load_example1(1000)
@@ -108,7 +92,7 @@ test_that("Collections can be saved to and loaded from binary files", {
 test_that("Fingerprint ids are respected", {
     set.seed(42)
     v <- load_example1(100)
-    vn <- sample(1L:1000L, 100)
+    vn <- c(1e09L, 1e03L, sample(1e09L, 98))
     vn_s <- sort(vn)
     names(v) <- vn
     m <- MorganFPS$new(v)
@@ -124,3 +108,9 @@ test_that("Fingerprint ids are respected", {
     expect_equal(res[["id"]], vn_s)
 })
 
+test_that("Duplicate fingerprints are rejected", {
+    v <- load_example1(5)
+    vn <- c(1, 2, 3, 5, 3)
+    names(v) <- vn
+    expect_error(MorganFPS$new(v), "Duplicate names are not allowed")
+})
