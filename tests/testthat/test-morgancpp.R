@@ -106,6 +106,8 @@ test_that("Fingerprint ids are respected", {
     m <- MorganFPS$new(v)
     res <- m$tanimoto_all(vn[[1]])
     expect_equal(res[["id"]], vn_s)
+    expect_error(m$tanimoto_all("66"), "Fingerprint 66 not found")
+    expect_error(m$tanimoto_subset(c("66", "67"), NULL), "Fingerprint 66 not found")
 })
 
 test_that("Duplicate fingerprints are rejected", {

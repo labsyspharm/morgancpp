@@ -86,7 +86,8 @@ std::vector<FingerprintName> convert_sort_name_vec(Rcpp::RObject& names) {
 }
 
 size_t zstd_frame_decompress(
-    std::ifstream &in_stream, size_t &compressed_size, std::vector<char> &out_buffer
+    std::ifstream &in_stream, size_t &compressed_size, char* out_buffer,
+    size_t &out_buffer_size
 ) {
   std::vector<char> compressed_buffer;
   // compressed_buffer.resize(ZSTD_FRAMEHEADERSIZE_MAX);
@@ -115,10 +116,11 @@ size_t zstd_frame_decompress(
   if (compressed_size != frame_compressed_size) {
     Rcpp::stop("Inconsistent reported compressed sizes: %i and %i", compressed_size, frame_compressed_size);
   }
-
-  out_buffer.resize(decompressed_size);
+  if (decompressed_size != out_buffer_size) {
+    Rcpp::stop("Decompressed size differs from output buffer size: %i and %i", decompressed_size, out_buffer_size);
+  }
   size_t const decompressed_bytes = ZSTD_decompress(
-    out_buffer.data(), decompressed_size,
+    out_buffer, decompressed_size,
     compressed_buffer.data(), compressed_size
   );
   if (ZSTD_isError(decompressed_bytes)) {
@@ -258,8 +260,6 @@ public:
     // std::vector<char> file_buffer(std::istreambuf_iterator<char>(input), {});
     // std::vector<char> decompressed_buffer;
 
-    std::vector<char> decompressed_buffer;
-
     char magic[] = "xORGANFPS";
     in_stream.read(magic, 9);
 
@@ -277,29 +277,25 @@ public:
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
     Rcpp::Rcerr << "Fingerprint block has " << size_next_block << " bytes\n";
 
-    size_t bytes_decompressed = zstd_frame_decompress(
-      in_stream, size_next_block, decompressed_buffer
+    size_t expected_decompressed_size = fps.size() * sizeof(Fingerprint);
+
+    zstd_frame_decompress(
+      in_stream, size_next_block, reinterpret_cast<char*>(fps.data()),
+      expected_decompressed_size
     );
 
-    if (fps.size() * sizeof(Fingerprint) != bytes_decompressed) {
-      Rcpp::stop("Size of decompressed fingerprints differs from expected size.");
-    };
-
-    std::memcpy(reinterpret_cast<char*>(fps.data()), decompressed_buffer.data(), bytes_decompressed);
     Rcpp::Rcerr << "Fingerprints decompressed\n";
 
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
     Rcpp::Rcerr << "Names block has " << size_next_block << " bytes\n";
 
-    bytes_decompressed = zstd_frame_decompress(
-      in_stream, size_next_block, decompressed_buffer
+    expected_decompressed_size = fp_names.size() * sizeof(FingerprintName);
+
+    zstd_frame_decompress(
+      in_stream, size_next_block, reinterpret_cast<char*>(fp_names.data()),
+      expected_decompressed_size
     );
 
-    if (fp_names.size() * sizeof(FingerprintName) != bytes_decompressed) {
-      Rcpp::stop("Size of decompressed fingerprint names differs from expected size.");
-    };
-
-    std::memcpy(reinterpret_cast<char*>(fp_names.data()), decompressed_buffer.data(), bytes_decompressed);
     Rcpp::Rcerr << "Names decompressed\n";
   }
 
@@ -459,7 +455,7 @@ private:
     FingerprintName x_name = convert_name(x);
     auto fp_pt = std::lower_bound(fp_names.begin(), fp_names.end(), x_name);
     if (*fp_pt != x_name)
-      Rcpp::stop("Fingerprint %u not found", x_name);
+      Rcpp::stop("Fingerprint %i not found", x_name);
     return fps.at(fp_pt - fp_names.begin());
   }
 
@@ -471,7 +467,7 @@ private:
     for (auto& x: names) {
       cur_idx = std::lower_bound(last_idx, fp_names.end(), x);
       if (*cur_idx != x)
-        Rcpp::stop("Fingerprint %u not found", x);
+        Rcpp::stop("Fingerprint %i not found", x);
       else
         hits.push_back(fps.at(cur_idx - fp_names.begin()));
         last_idx = cur_idx;
