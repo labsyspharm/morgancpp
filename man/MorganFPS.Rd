@@ -19,6 +19,8 @@ refer to the given names.}
 
 \item{\code{tanimoto_all}}{(i) similarity between fingerprint i and all others}
 
+\item{\code{tanimoto_threshold}}{(threshold) similarity of all NxN combinations of fingerprints above the set threshold}
+
 \item{\code{tanimoto_subset}}{(i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL}
 
 \item{\code{tanimoto_ext}}{(s) similarity between external hexadecimal string s and all

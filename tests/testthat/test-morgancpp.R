@@ -143,3 +143,11 @@ test_that("Subset queries are accurate", {
     )
     expect_equal(res$structural_similarity, manual_similarity)
 })
+
+
+test_that("Thresholded queries work", {
+  v <- load_example1(10)
+  m <- MorganFPS$new(v)
+  res <- m$tanimoto_threshold(0.1)
+  expect_equal(nrow(res), 18)
+})

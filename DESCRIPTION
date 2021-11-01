@@ -1,11 +1,11 @@
 Package: morgancpp
-Version: 0.3.1
+Version: 0.3.2
 Date: 2019-12-08
 License: MIT
 Title: Morgan fingerprints in C++
 Description: Efficient data structure for storing and comparing Morgan fingerprints
-Author: Artem Sokolov
-Maintainer: Artem Sokolov <artem.sokolov@gmail.com>
+Authors@R: c(person("Artem", "Sokolov", email = "artem.sokolov@gmail.com", role = c("aut", "cre")),
+    person("Clemens", "Hug", email = "clemens.hug@gmail.com", role = "aut"))
 Depends: R (>= 3.5.0)
 Encoding: UTF-8
 LinkingTo: Rcpp

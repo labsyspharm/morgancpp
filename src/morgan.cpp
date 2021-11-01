@@ -213,6 +213,7 @@ double tanimoto(const std::string& s1, const std::string& s2) {
 //'   refer to the given names.
 //' @field tanimoto (i,j) similarity between fingerprints i and j
 //' @field tanimoto_all (i) similarity between fingerprint i and all others
+//' @field tanimoto_threshold (threshold) similarity of all NxN combinations of fingerprints above the set threshold
 //' @field tanimoto_subset (i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL
 //' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
 //'    fingerprints in the collection
@@ -269,13 +270,13 @@ public:
 
     FingerprintN n;
     in_stream.read(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
-    Rcpp::Rcerr << "Reading " << n << " fingerprints from file\n";
+    Rcpp::Rcout << "Reading " << n << " fingerprints from file\n";
     fps.resize(n);
     fp_names.resize(n);
 
     size_t size_next_block;
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcerr << "Fingerprint block has " << size_next_block << " bytes\n";
+    Rcpp::Rcout << "Fingerprint block has " << size_next_block << " bytes\n";
 
     size_t expected_decompressed_size = fps.size() * sizeof(Fingerprint);
 
@@ -284,10 +285,10 @@ public:
       expected_decompressed_size
     );
 
-    Rcpp::Rcerr << "Fingerprints decompressed\n";
+    Rcpp::Rcout << "Fingerprints decompressed\n";
 
     in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcerr << "Names block has " << size_next_block << " bytes\n";
+    Rcpp::Rcout << "Names block has " << size_next_block << " bytes\n";
 
     expected_decompressed_size = fp_names.size() * sizeof(FingerprintName);
 
@@ -296,7 +297,7 @@ public:
       expected_decompressed_size
     );
 
-    Rcpp::Rcerr << "Names decompressed\n";
+    Rcpp::Rcout << "Names decompressed\n";
   }
 
   // Tanimoto similarity between drugs i and j
@@ -314,6 +315,28 @@ public:
     return Rcpp::DataFrame::create(
       Rcpp::Named("id") = fp_names,
       Rcpp::Named("structural_similarity") = res
+    );
+  }
+
+  // Tanimoto similarity of all NxN combinations of fingerprints
+  Rcpp::DataFrame tanimoto_threshold(double threshold) {
+    Rcpp::IntegerVector id_1;
+    Rcpp::IntegerVector id_2;
+    Rcpp::NumericVector sims;
+    for (int i = 0; i < fps.size(); i++) {
+      for (int j = i + 1; j < fps.size(); j++) {
+        auto sim = jaccard_fp(fps[i], fps[j]);
+        if (sim > threshold) {
+          id_1.push_back(fp_names[i]);
+          id_2.push_back(fp_names[j]);
+          sims.push_back(sim);
+        }
+      }
+    }
+    return Rcpp::DataFrame::create(
+      Rcpp::Named("id_1") = id_1,
+      Rcpp::Named("id_2") = id_2,
+      Rcpp::Named("structural_similarity") = sims
     );
   }
 
@@ -385,7 +408,7 @@ public:
       Rcpp::stop("Compression level must be between 0 and 22. Default = 3");
 
     FingerprintN n = fps.size();
-    Rcpp::Rcerr << "Wrinting " << n << " fingerprints\n";
+    Rcpp::Rcout << "Wrinting " << n << " fingerprints\n";
 
     std::ofstream out_stream;
     out_stream.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -408,12 +431,12 @@ public:
       Rcpp::stop("Error compressing fingerprints: %s", ZSTD_getErrorName(fingerprints_compressed));
     }
 
-    Rcpp::Rcerr << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
+    Rcpp::Rcout << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), fingerprints_compressed);
-    Rcpp::Rcerr << "Wrote fingerprints\n";
+    Rcpp::Rcout << "Wrote fingerprints\n";
 
     input_size = fp_names.size() * sizeof(FingerprintName);
     out_buffer.resize(ZSTD_compressBound(input_size));
@@ -426,12 +449,12 @@ public:
       Rcpp::stop("Error compressing fingerprint names: %s", ZSTD_getErrorName(names_compressed));
     }
 
-    Rcpp::Rcerr << "Names compressed " << names_compressed << " bytes\n";
+    Rcpp::Rcout << "Names compressed " << names_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), names_compressed);
-    Rcpp::Rcerr << "Wrote Names\n";
+    Rcpp::Rcout << "Wrote Names\n";
 
     out_stream.close();
   }
@@ -492,6 +515,8 @@ RCPP_MODULE(morgan_cpp) {
 	    "Similarity between two fingerprints in the collection")
     .method("tanimoto_all", &MorganFPS::tanimoto_all,
 	    "Similarity of a fingerprint against all other fingerprints in the collection")
+    .method("tanimoto_threshold", &MorganFPS::tanimoto_threshold,
+	    "@field tanimoto_threshold (threshold) similarity of all NxN combinations of fingerprints above the set threshold")
     .method("tanimoto_subset", &MorganFPS::tanimoto_subset,
 	    "Similarity of a set of fingerprints against another set or all other fingerprints in the collection.")
     .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
