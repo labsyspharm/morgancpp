@@ -151,3 +151,12 @@ test_that("Thresholded queries work", {
   res <- m$tanimoto_threshold(0.1)
   expect_equal(nrow(res), 18)
 })
+
+test_that("Identity matching works", {
+  v <- load_example1(100)
+  m <- MorganMap$new(v)
+  set.seed(42)
+  v2 <- sample(load_example1(300), 10)
+  ma <- m$find_matches(v2)
+  expect_equal(nrow(ma), 4)
+})

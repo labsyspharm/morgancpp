@@ -82,6 +82,21 @@ res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 finger
 kable(head(res2), label = "res2")
 ```
 
+## Tresholded searches
+
+Often the similarities between all NxN pairs of fingerprints above a certain
+threshold are of interest. The `tanimoto_threshold()` computes these similarities
+and outputs them as a data frame.
+
+
+```{r}
+res3 <- m$tanimoto_threshold( 0.9 )
+```
+
+```{r, echo = FALSE, results = "asis"}
+kable(head(res3), label = "res3")
+```
+
 ## Saving fingerprints
 
 Fingerprints can be stored on disk in a binary format supporting extremely fast writing

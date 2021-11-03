@@ -97,27 +97,57 @@ hexadecimal strings):
 res1 <- m$tanimoto_all( 1 )       # Compound 1 against all 100,000 fingerprints
 ```
 
-|  id | structural\_similarity |
-|----:|-----------------------:|
-|   1 |              1.0000000 |
-|   2 |              0.1627907 |
-|   3 |              0.0957447 |
-|   4 |              0.0930233 |
-|   5 |              0.2179487 |
-|   6 |              0.0750000 |
+|  id | structural_similarity |
+|----:|----------------------:|
+|   1 |             1.0000000 |
+|   2 |             0.1627907 |
+|   3 |             0.0957447 |
+|   4 |             0.0930233 |
+|   5 |             0.2179487 |
+|   6 |             0.0750000 |
 
 ``` r
 res2 <- m$tanimoto_ext( fps[1] )  # External compound against all 100,000 fingerprints
 ```
 
-|  id | structural\_similarity |
-|----:|-----------------------:|
-|   1 |              1.0000000 |
-|   2 |              0.1627907 |
-|   3 |              0.0957447 |
-|   4 |              0.0930233 |
-|   5 |              0.2179487 |
-|   6 |              0.0750000 |
+|  id | structural_similarity |
+|----:|----------------------:|
+|   1 |             1.0000000 |
+|   2 |             0.1627907 |
+|   3 |             0.0957447 |
+|   4 |             0.0930233 |
+|   5 |             0.2179487 |
+|   6 |             0.0750000 |
+
+## Tresholded searches
+
+Often the similarities between all NxN pairs of fingerprints above a
+certain threshold are of interest. The `tanimoto_threshold()` computes
+these similarities and outputs them as a data frame.
+
+``` r
+res3 <- m$tanimoto_threshold( 0.9 )
+```
+
+    ## 0 done
+    ## 10000 done
+    ## 20000 done
+    ## 30000 done
+    ## 40000 done
+    ## 50000 done
+    ## 60000 done
+    ## 70000 done
+    ## 80000 done
+    ## 90000 done
+
+| id_1 |  id_2 | structural_similarity |
+|-----:|------:|----------------------:|
+|    6 | 36184 |             1.0000000 |
+|   51 | 78113 |             0.9305556 |
+|  122 |  6768 |             0.9062500 |
+|  185 | 93177 |             0.9850746 |
+|  209 | 88214 |             0.9137931 |
+|  229 | 29896 |             0.9166667 |
 
 ## Saving fingerprints
 
@@ -132,9 +162,9 @@ m$save_file(tmp_file)
 ```
 
     ## Wrinting 100000 fingerprints
-    ## Fingerprints compressed 6283100 bytes
+    ## Fingerprints compressed 6264569 bytes
     ## Wrote fingerprints
-    ## Names compressed 253790 bytes
+    ## Names compressed 253792 bytes
     ## Wrote Names
 
 ``` r
@@ -142,14 +172,9 @@ m2 <- MorganFPS$new(tmp_file, from_file = TRUE)
 ```
 
     ## Reading 100000 fingerprints from file
-    ## Fingerprint block has 6283100 bytes
-    ## Compressed fingerprints read
-    ## Decompressing block 1
-    ## Compressed block size: 6283100
+    ## Fingerprint block has 6264569 bytes
     ## Fingerprints decompressed
-    ## Names block has 253790 bytes
-    ## Decompressing block 1
-    ## Compressed block size: 253790
+    ## Names block has 253792 bytes
     ## Names decompressed
 
 ``` r

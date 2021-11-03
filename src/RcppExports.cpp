@@ -18,10 +18,12 @@ BEGIN_RCPP
 END_RCPP
 }
 
+RcppExport SEXP _rcpp_module_boot_morgan_identity_cpp();
 RcppExport SEXP _rcpp_module_boot_morgan_cpp();
 
 static const R_CallMethodDef CallEntries[] = {
     {"_morgancpp_tanimoto", (DL_FUNC) &_morgancpp_tanimoto, 2},
+    {"_rcpp_module_boot_morgan_identity_cpp", (DL_FUNC) &_rcpp_module_boot_morgan_identity_cpp, 0},
     {"_rcpp_module_boot_morgan_cpp", (DL_FUNC) &_rcpp_module_boot_morgan_cpp, 0},
     {NULL, NULL, 0}
 };
