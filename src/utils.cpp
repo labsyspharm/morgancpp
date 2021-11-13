@@ -4,8 +4,10 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <algorithm>
+#include <exception>
 
 #include "utils.hpp"
 
@@ -110,16 +112,172 @@ Fingerprint raw2fp(const std::string& raw) {
 }
 
 // Convert ASCII hex string to fingerprint.
+// std::string hex2raw(const std::string& hex) {
+//   if (hex.length() % 2 != 0) {
+//     ::Rf_error("Hex input length must be multiple of 2");
+//   }
+//   // Convert hex to raw bytes
+//   std::string raw(hex.length() / 2, '\0');
+//   auto hi = std::cbegin(hex);
+//   for (auto& ri : raw) {
+//     ri = parse_hex_char(*hi++) | (parse_hex_char(*hi++) << 4);
+//   }
+//   return raw;
+// }
+
+std::string hex2raw(const std::string& hex_string) {
+  if (hex_string.length() % 2 != 0) {
+    ::Rf_error("Hex input length must be multiple of 2");
+  }
+  std::string byte_string;
+  byte_string.reserve(hex_string.length() / 2);
+  for (size_t i = 0; i < hex_string.length(); i += 2) {
+    byte_string.push_back(
+      static_cast<char>(
+        (parse_hex_char(hex_string[i]) << 4) | parse_hex_char(hex_string[i + 1])
+      )
+    );
+  }
+  return byte_string;
+}
+
+// Convert ASCII hex string to fingerprint.
 Fingerprint hex2fp(const std::string& hex) {
   if (hex.length() != 512) {
     ::Rf_error("Input hex string must be of length 512");
   }
-  // Convert hex to raw bytes
-  std::string raw(256, '\0');
-  auto hi = std::cbegin(hex);
-  for (auto& ri : raw) {
-    ri = parse_hex_char(*hi++) | (parse_hex_char(*hi++) << 4);
-  }
-  return raw2fp(raw);
+  return raw2fp(hex2raw(hex));
 }
 
+// From https://github.com/rdkit/rdkit/blob/78aac3c1bcc8f652053fdab26e5fe835fdaea53b/Code/RDGeneral/StreamOps.h#L143
+uint32_t readPackedIntFromStream(std::stringstream &ss) {
+  uint32_t val, num;
+  int shift, offset;
+  char tmp;
+  ss.read(&tmp, sizeof(tmp));
+  if (ss.fail()) {
+    throw std::runtime_error("failed to read from stream");
+  }
+
+  val = static_cast<unsigned char>(tmp);
+  offset = 0;
+  if ((val & 1) == 0) {
+    shift = 1;
+  } else if ((val & 3) == 1) {
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 8);
+    shift = 2;
+    offset = (1 << 7);
+  } else if ((val & 7) == 3) {
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 8);
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 16);
+    shift = 3;
+    offset = (1 << 7) + (1 << 14);
+  } else {
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 8);
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 16);
+    ss.read((char *)&tmp, sizeof(tmp));
+    if (ss.fail()) {
+      throw std::runtime_error("failed to read from stream");
+    }
+
+    val |= (static_cast<unsigned char>(tmp) << 24);
+    shift = 3;
+    offset = (1 << 7) + (1 << 14) + (1 << 21);
+  }
+  num = (val >> shift) + offset;
+  // num = EndianSwapBytes<LITTLE_ENDIAN_ORDER,HOST_ENDIAN_ORDER>(num);
+  return num;
+}
+
+inline void fp_set_bit(Fingerprint& fp, size_t i) {
+  fp[i / 32] |= 1 << i % 32;
+}
+
+// From https://github.com/rdkit/rdkit/blob/06027dcd05674787b61f27ba46ec0d42a6037540/Code/DataStructs/BitVect.cpp#L23
+Fingerprint rdkit2fp(const std::string& hex) {
+  auto raw = hex2raw(hex);
+  Rcpp::Rcout << "Hex input: '" << hex << "'" << std::endl << "Raw input: '" << raw << "'" << std::endl;
+  for (auto& x: raw) {
+    Rcpp::Rcout << +*reinterpret_cast<unsigned char*>(&x) << " ";
+  }
+  Rcpp::Rcout << std::endl;
+  std::stringstream ss(raw);
+
+  Fingerprint fp;
+  fp.fill(0);
+  std::int32_t format = 0;
+  std::uint32_t nOn = 0;
+  std::int32_t size;
+  std::int32_t version = 0;
+
+  // earlier versions of the code did not have the version number encoded, so
+  //  we'll use that to distinguish version 0
+  ss.read(reinterpret_cast<char*>(&size), sizeof(size));
+  if (size < 0) {
+    version = -1 * size;
+    // Rcpp::Rcout << "Size: " << size << " Version: " << version << std::endl;
+    if (version == 16) {
+      format = 1;
+    } else if (version == 32) {
+      format = 2;
+    } else {
+      throw std::runtime_error("bad version in BitVect pickle");
+    }
+    ss.read(reinterpret_cast<char*>(&size), sizeof(size));
+  } else {
+    throw std::runtime_error("invalid BitVect pickle");
+  }
+
+  ss.read(reinterpret_cast<char*>(&nOn), sizeof(nOn));
+  // Rcpp::Rcout << "Bits set: " << nOn << std::endl;
+
+  // if the either have older version or or version 16 with ints for on bits
+  if ((format == 0) ||
+      ((format == 1) && (size >= std::numeric_limits<unsigned short>::max()))) {
+    std::uint32_t tmp;
+    for (unsigned int i = 0; i < nOn; i++) {
+      ss.read(reinterpret_cast<char*>(&tmp), sizeof(tmp));
+      fp_set_bit(fp, tmp);
+    }
+  } else if (format == 1) {  // version 16 and on bits stored as short ints
+    std::uint16_t tmp;
+    for (unsigned int i = 0; i < nOn; i++) {
+      ss.read(reinterpret_cast<char*>(&tmp), sizeof(tmp));
+      fp_set_bit(fp, tmp);
+    }
+  } else if (format == 2) {  // run length encoded format
+    std::uint32_t curr = 0;
+    for (unsigned int i = 0; i < nOn; i++) {
+      curr += readPackedIntFromStream(ss);
+      // Rcpp::Rcout << "Offset: " << curr << std::endl;
+      fp_set_bit(fp, curr);
+      curr++;
+    }
+  }
+  return fp;
+}

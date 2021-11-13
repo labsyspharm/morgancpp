@@ -160,3 +160,7 @@ test_that("Identity matching works", {
   ma <- m$find_matches(v2)
   expect_equal(nrow(ma), 4)
 })
+
+test_that("Loading fingprints from rdkit hex code works", {
+  m <- MorganFPS$new("e0ffffff000400001a00000026582eb62a09002c2a620c18309638069c0644327826440c324e3e98", from = "packed-rdkit")
+})

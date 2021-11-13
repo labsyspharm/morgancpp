@@ -32,5 +32,6 @@ std::vector<FingerprintName> convert_sort_name_vec(Rcpp::RObject& names);
 int parse_hex_char(const char& c);
 Fingerprint raw2fp(const std::string& raw);
 Fingerprint hex2fp(const std::string& hex);
+Fingerprint rdkit2fp(const std::string& hex);
 
 #endif
