@@ -221,11 +221,6 @@ inline void fp_set_bit(Fingerprint& fp, size_t i) {
 // From https://github.com/rdkit/rdkit/blob/06027dcd05674787b61f27ba46ec0d42a6037540/Code/DataStructs/BitVect.cpp#L23
 Fingerprint rdkit2fp(const std::string& hex) {
   auto raw = hex2raw(hex);
-  Rcpp::Rcout << "Hex input: '" << hex << "'" << std::endl << "Raw input: '" << raw << "'" << std::endl;
-  for (auto& x: raw) {
-    Rcpp::Rcout << +*reinterpret_cast<unsigned char*>(&x) << " ";
-  }
-  Rcpp::Rcout << std::endl;
   std::stringstream ss(raw);
 
   Fingerprint fp;
@@ -281,3 +276,75 @@ Fingerprint rdkit2fp(const std::string& hex) {
   }
   return fp;
 }
+
+std::string guess_fp_format(const Rcpp::CharacterVector& fps_hex) {
+  std::string format;
+  if (!fps_hex.hasAttribute("format")) {
+    format = "full";
+  } else {
+    format = Rcpp::as<std::string>(fps_hex.attr("format"));
+  }
+  if (format != "full" && format != "packed")
+    Rcpp::stop("Unknown format");
+  return format;
+}
+
+std::function<Fingerprint (const std::string&)> select_fp_reader(const std::string& format) {
+  if (format == "full") {
+    return hex2fp;
+  } else if (format == "packed") {
+    return rdkit2fp;
+  } else {
+    Rcpp::stop("Unknown format");
+  }
+}
+
+
+size_t zstd_frame_decompress(
+    std::ifstream &in_stream, size_t &compressed_size, char* out_buffer,
+    size_t &out_buffer_size
+) {
+  std::vector<char> compressed_buffer;
+  // compressed_buffer.resize(ZSTD_FRAMEHEADERSIZE_MAX);
+  // std::streampos cur_pos = in_stream.tellg();
+  // in_stream.read(compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX);
+  // in_stream.seekg(cur_pos, std::ios_base::beg);
+  //
+  // unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
+  //   compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX
+  // );
+  compressed_buffer.resize(compressed_size);
+  in_stream.read(compressed_buffer.data(), compressed_size);
+  unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
+    compressed_buffer.data(), compressed_size
+  );
+  if (decompressed_size == ZSTD_CONTENTSIZE_ERROR || decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN) {
+    Rcpp::stop("Error finding decompressed frame size");
+  }
+
+  size_t const frame_compressed_size = ZSTD_findFrameCompressedSize(
+    compressed_buffer.data(), compressed_size
+  );
+  if (ZSTD_isError(frame_compressed_size)) {
+    Rcpp::stop("Error finding compressed frame size: %s", ZSTD_getErrorName(frame_compressed_size));
+  }
+  if (compressed_size != frame_compressed_size) {
+    Rcpp::stop("Inconsistent reported compressed sizes: %i and %i", compressed_size, frame_compressed_size);
+  }
+  if (decompressed_size != out_buffer_size) {
+    Rcpp::stop("Decompressed size differs from output buffer size: %i and %i", decompressed_size, out_buffer_size);
+  }
+  size_t const decompressed_bytes = ZSTD_decompress(
+    out_buffer, decompressed_size,
+    compressed_buffer.data(), compressed_size
+  );
+  if (ZSTD_isError(decompressed_bytes)) {
+    Rcpp::stop("Error decompressing: %s", ZSTD_getErrorName(decompressed_bytes));
+  }
+  if (decompressed_bytes != decompressed_size) {
+    Rcpp::stop("Inconsistent decompressed size: Expected %i Actual %i", decompressed_size, decompressed_bytes);
+  }
+
+  return decompressed_size;
+};
+

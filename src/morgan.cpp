@@ -9,54 +9,6 @@
 
 #include "utils.hpp"
 
-size_t zstd_frame_decompress(
-    std::ifstream &in_stream, size_t &compressed_size, char* out_buffer,
-    size_t &out_buffer_size
-) {
-  std::vector<char> compressed_buffer;
-  // compressed_buffer.resize(ZSTD_FRAMEHEADERSIZE_MAX);
-  // std::streampos cur_pos = in_stream.tellg();
-  // in_stream.read(compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX);
-  // in_stream.seekg(cur_pos, std::ios_base::beg);
-  //
-  // unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
-  //   compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX
-  // );
-  compressed_buffer.resize(compressed_size);
-  in_stream.read(compressed_buffer.data(), compressed_size);
-  unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
-    compressed_buffer.data(), compressed_size
-  );
-  if (decompressed_size == ZSTD_CONTENTSIZE_ERROR || decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN) {
-    Rcpp::stop("Error finding decompressed frame size");
-  }
-
-  size_t const frame_compressed_size = ZSTD_findFrameCompressedSize(
-    compressed_buffer.data(), compressed_size
-  );
-  if (ZSTD_isError(frame_compressed_size)) {
-    Rcpp::stop("Error finding compressed frame size: %s", ZSTD_getErrorName(frame_compressed_size));
-  }
-  if (compressed_size != frame_compressed_size) {
-    Rcpp::stop("Inconsistent reported compressed sizes: %i and %i", compressed_size, frame_compressed_size);
-  }
-  if (decompressed_size != out_buffer_size) {
-    Rcpp::stop("Decompressed size differs from output buffer size: %i and %i", decompressed_size, out_buffer_size);
-  }
-  size_t const decompressed_bytes = ZSTD_decompress(
-    out_buffer, decompressed_size,
-    compressed_buffer.data(), compressed_size
-  );
-  if (ZSTD_isError(decompressed_bytes)) {
-    Rcpp::stop("Error decompressing: %s", ZSTD_getErrorName(decompressed_bytes));
-  }
-  if (decompressed_bytes != decompressed_size) {
-    Rcpp::stop("Inconsistent decompressed size: Expected %i Actual %i", decompressed_size, decompressed_bytes);
-  }
-
-  return decompressed_size;
-};
-
 // Compute Jaccard similarity of two fingerprints
 double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
   int count_and = 0, count_or = 0;
@@ -70,6 +22,14 @@ double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
   return static_cast<double>(count_and) / count_or;
 }
 
+Fingerprint convert_fp(const Rcpp::CharacterVector& fps_hex) {
+  if (fps_hex.length() != 1)
+    Rcpp::stop("Requires exactly one fingerprint");
+  std::string format = guess_fp_format(fps_hex);
+  auto string_to_fp = select_fp_reader(format);
+  return string_to_fp(Rcpp::as<std::string>(fps_hex(0)));
+}
+
 //' Tanimoto similarity between two Morgan fingerprints
 //'
 //' Computes Tanimoto similarity between two hexadecimal strings
@@ -79,12 +39,42 @@ double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
 //' @return Jaccard similarity over the bits representing individual keys
 //' @export
 // [[Rcpp::export]]
-double tanimoto(const std::string& s1, const std::string& s2) {
-  const Fingerprint& fp1 = hex2fp(s1);
-  const Fingerprint& fp2 = hex2fp(s2);
+double tanimoto(const Rcpp::CharacterVector& s1, const Rcpp::CharacterVector& s2) {
+  const Fingerprint& fp1 = convert_fp(s1);
+  const Fingerprint& fp2 = convert_fp(s2);
   return jaccard_fp(fp1, fp2);
 }
 
+void convert_fps(
+    const Rcpp::CharacterVector& fps_hex,
+    std::vector<FingerprintName>& out_names,
+    std::vector<Fingerprint>& out_fps
+) {
+  std::string format = guess_fp_format(fps_hex);
+  auto string_to_fp = select_fp_reader(format);
+  size_t n = fps_hex.length();
+  Rcpp::RObject passed_names = fps_hex.names();
+  out_fps.reserve(n);
+  out_names.reserve(n);
+  if(passed_names.isNULL()) {
+    for (int i = 0; i < n; i++) {
+      out_names.push_back((FingerprintName) i + 1);
+      out_fps.push_back(string_to_fp(Rcpp::as<std::string>(fps_hex(i))));
+    }
+  } else {
+    std::vector<FingerprintName> unsorted_names = convert_name_vec(passed_names);
+    // Make vector that contains indices that sort the name vector
+    std::vector<size_t> sort_vector = sort_indices(unsorted_names);
+    for (auto i: sort_vector) {
+      out_names.push_back(unsorted_names.at(i));
+      out_fps.push_back(string_to_fp(Rcpp::as<std::string>(fps_hex(i))));
+    }
+    // Checking for duplicate names
+    auto duplicate_pair = std::adjacent_find(out_names.begin(), out_names.end());
+    if (duplicate_pair != out_names.end())
+      Rcpp::stop("Duplicate names are not allowed");
+  }
+}
 
 //' @name MorganFPS
 //' @title Morgan fingerprints collection
@@ -109,23 +99,9 @@ class MorganFPS {
 public:
 
   // Constructor accepts a named character vector of hex strings
-  MorganFPS(const Rcpp::CharacterVector& fps_hex) {
-    fill_fps(fps_hex, hex2fp);
-  }
-
-  // Constructor accepts a named character vector of hex strings
   // either in full hexadecimal format or in packed RDKIT format
-  MorganFPS(const Rcpp::CharacterVector& fps_hex, const std::string& format) {
-    Rcpp::Rcout << "Fingerprint format: " << format << std::endl;
-    if (format == "full-hex") {
-      fill_fps(fps_hex, hex2fp);
-    } else if (format == "packed-rdkit") {
-      fill_fps(fps_hex, rdkit2fp);
-    } else if (format == "file") {
-      read_file(Rcpp::as<std::string>(fps_hex));
-    } else {
-      Rcpp::stop("Unknown format");
-    }
+  MorganFPS(const Rcpp::CharacterVector& fps_hex) {
+    convert_fps(fps_hex, fp_names, fps);
   }
 
   // Constructor accepts a file path to load fingerprints from binary file
@@ -220,17 +196,27 @@ public:
 
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
-  Rcpp::DataFrame tanimoto_ext(const std::string& other) {
-    const Fingerprint fp_other = hex2fp(other);
-    Rcpp::NumericVector res(fps.size());
-    Rcpp::IntegerVector fp_names_r(fps.size());
-    for (int i = 0; i < fps.size(); i++) {
-      res[i] = jaccard_fp(fps[i], fp_other);
-      fp_names_r[i] = static_cast<int>(fp_names.at(i));
+  Rcpp::DataFrame tanimoto_ext(const Rcpp::CharacterVector& others) {
+    std::vector<FingerprintName> other_names;
+    std::vector<Fingerprint> other_fps;
+    convert_fps(others, other_names, other_fps);
+    size_t nn = other_fps.size() * n();
+    Rcpp::IntegerVector id_1(nn);
+    Rcpp::IntegerVector id_2(nn);
+    Rcpp::NumericVector sim(nn);
+    size_t idx = 0;
+    for (size_t i = 0; i < n(); i++) {
+      for (size_t j = 0; j < other_fps.size(); j++) {
+        sim[idx] = jaccard_fp(fps[i], other_fps[j]);
+        id_1[idx] = other_names[j];
+        id_2[idx] = fp_names[i];
+        idx++;
+      }
     }
     return Rcpp::DataFrame::create(
-      Rcpp::Named("id") = fp_names_r,
-      Rcpp::Named("structural_similarity") = res
+      Rcpp::Named("id_1") = id_1,
+      Rcpp::Named("id_2") = id_2,
+      Rcpp::Named("structural_similarity") = sim
     );
   }
 
@@ -318,54 +304,20 @@ private:
     return fps.at(fp_pt - fp_names.begin());
   }
 
-  std::vector<Fingerprint> fp_index(std::vector<FingerprintName>& names) {
-    std::vector<Fingerprint> hits;
+  std::vector<std::reference_wrapper<Fingerprint>> fp_index(std::vector<FingerprintName>& names) {
+    std::vector<std::reference_wrapper<Fingerprint>> hits;
     hits.reserve(names.size());
     auto last_idx = fp_names.begin();
     std::vector<FingerprintName>::iterator cur_idx;
-    for (auto& x: names) {
+    for (auto x: names) {
       cur_idx = std::lower_bound(last_idx, fp_names.end(), x);
       if (*cur_idx != x)
         Rcpp::stop("Fingerprint %i not found", x);
       else
-        hits.push_back(fps.at(cur_idx - fp_names.begin()));
+        hits.push_back(std::ref(fps.at(cur_idx - fp_names.begin())));
         last_idx = cur_idx;
     }
     return hits;
-  }
-
-  bool has_duplicate_names() {
-    auto duplicate_pair = std::adjacent_find(fp_names.begin(), fp_names.end());
-    return duplicate_pair != fp_names.end();
-  }
-
-  // template<typename T>
-  void fill_fps(
-      const Rcpp::CharacterVector& fps_hex,
-      // T&& string_to_fp
-      const std::function<Fingerprint (const std::string&)>& string_to_fp
-  ) {
-    size_t n = fps_hex.length();
-    Rcpp::RObject passed_names = fps_hex.names();
-    fps.reserve(n);
-    fp_names.reserve(n);
-    if(passed_names.isNULL()) {
-      for (int i = 0; i < n; i++) {
-        fp_names.push_back((FingerprintName) i + 1);
-        fps.push_back(string_to_fp(Rcpp::as<std::string>(fps_hex(i))));
-      }
-    } else {
-      std::vector<FingerprintName> unsorted_names = convert_name_vec(passed_names);
-      // Make vector that contains indices that sort the name vector
-      std::vector<size_t> sort_vector = sort_indices(unsorted_names);
-      for (auto &i: sort_vector) {
-        fp_names.push_back(unsorted_names.at(i));
-        fps.push_back(string_to_fp(Rcpp::as<std::string>(fps_hex(i))));
-      }
-      // Checking for duplicate names
-      if (has_duplicate_names())
-        Rcpp::stop("Duplicate names are not allowed");
-    }
   }
 
   void read_file(std::string filename) {
@@ -432,7 +384,6 @@ RCPP_MODULE(morgan_cpp) {
   class_<MorganFPS>( "MorganFPS" )
     .constructor<Rcpp::CharacterVector>("Construct fingerprint collection from vector of fingerprints")
     .constructor<std::string, bool>("Construct fingerprint collection from binary file", &typed_valid<std::string, bool>)
-    .constructor<std::string, std::string>("Construct fingerprint collection from multiple options", &typed_valid<std::string, std::string>)
     .method("size", &MorganFPS::size, "Size of the data in bytes")
     .method("n", &MorganFPS::n, "Number of elements")
     .method("tanimoto", &MorganFPS::tanimoto,

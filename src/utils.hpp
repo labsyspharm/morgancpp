@@ -33,5 +33,11 @@ int parse_hex_char(const char& c);
 Fingerprint raw2fp(const std::string& raw);
 Fingerprint hex2fp(const std::string& hex);
 Fingerprint rdkit2fp(const std::string& hex);
+std::string guess_fp_format(const Rcpp::CharacterVector& fps_hex);
+std::function<Fingerprint (const std::string&)> select_fp_reader(const std::string& format);
+size_t zstd_frame_decompress(
+    std::ifstream &in_stream, size_t &compressed_size, char* out_buffer,
+    size_t &out_buffer_size
+);
 
 #endif

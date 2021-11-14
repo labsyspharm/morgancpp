@@ -6,13 +6,13 @@
 using namespace Rcpp;
 
 // tanimoto
-double tanimoto(const std::string& s1, const std::string& s2);
+double tanimoto(const Rcpp::CharacterVector& s1, const Rcpp::CharacterVector& s2);
 RcppExport SEXP _morgancpp_tanimoto(SEXP s1SEXP, SEXP s2SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const std::string& >::type s1(s1SEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type s2(s2SEXP);
+    Rcpp::traits::input_parameter< const Rcpp::CharacterVector& >::type s1(s1SEXP);
+    Rcpp::traits::input_parameter< const Rcpp::CharacterVector& >::type s2(s2SEXP);
     rcpp_result_gen = Rcpp::wrap(tanimoto(s1, s2));
     return rcpp_result_gen;
 END_RCPP

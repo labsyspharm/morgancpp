@@ -11,7 +11,7 @@ Efficient structure for storing a set of Morgan fingerprints
 \describe{
 \item{\code{new}}{Constructor. Accepts either a vector of fingerprints in hexadecimal
 format or a path to a binary file of fingerprints using the argument
-`from_file = TRUE`. The vector of fingerprints can optionally be named.
+\code{from_file = TRUE}. The vector of fingerprints can optionally be named.
 Names need to be coercible to integers. When querying, the indices i and j
 refer to the given names.}
 

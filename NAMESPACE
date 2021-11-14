@@ -2,6 +2,7 @@
 
 export(MorganFPS)
 export(MorganMap)
+export(fingerprints)
 export(tanimoto)
 importFrom(Rcpp,cpp_object_initializer)
 useDynLib(morgancpp)
