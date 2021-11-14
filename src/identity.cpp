@@ -15,28 +15,32 @@ class MorganMap {
 public:
   MorganMap(const Rcpp::CharacterVector& fps_hex) {
     auto n = fps_hex.length();
+    auto format = guess_fp_format(fps_hex);
+    auto string_to_fp = select_fp_reader(format);
     Rcpp::RObject passed_names = fps_hex.names();
     fps.reserve(n);
     if(passed_names.isNULL()) {
       for (int i = 0; i < n; i++) {
-        fps.emplace(hex2fp(Rcpp::as<std::string>(fps_hex[i])), i + 1);
+        fps.emplace(string_to_fp(Rcpp::as<std::string>(fps_hex[i])), i + 1);
       }
     } else {
       auto unsorted_names = convert_name_vec(passed_names);
       for (int i = 0; i < n; i++) {
-        fps.emplace(hex2fp(Rcpp::as<std::string>(fps_hex[i])), unsorted_names[i]);
+        fps.emplace(string_to_fp(Rcpp::as<std::string>(fps_hex[i])), unsorted_names[i]);
       }
     }
   }
 
   Rcpp::DataFrame find_matches(const Rcpp::CharacterVector& fps_hex) {
     auto n = fps_hex.length();
+    auto format = guess_fp_format(fps_hex);
+    auto string_to_fp = select_fp_reader(format);
     Rcpp::RObject passed_names = fps_hex.names();
     std::vector<FingerprintName> id_1;
     std::vector<FingerprintName> id_2;
     if(passed_names.isNULL()) {
       for (int i = 0; i < n; i++) {
-        auto search = fps.find(hex2fp(Rcpp::as<std::string>(fps_hex[i])));
+        auto search = fps.find(string_to_fp(Rcpp::as<std::string>(fps_hex[i])));
         if (search != fps.end()) {
           id_1.push_back(i);
           id_2.push_back(search->second);
@@ -45,7 +49,7 @@ public:
     } else {
       auto unsorted_names = convert_name_vec(passed_names);
       for (int i = 0; i < n; i++) {
-        auto search = fps.find(hex2fp(Rcpp::as<std::string>(fps_hex[i])));
+        auto search = fps.find(string_to_fp(Rcpp::as<std::string>(fps_hex[i])));
         if (search != fps.end()) {
           id_1.push_back(unsorted_names[i]);
           id_2.push_back(search->second);
