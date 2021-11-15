@@ -212,8 +212,10 @@ uint32_t readPackedIntFromStream(std::stringstream &ss) {
   return num;
 }
 
-inline void fp_set_bit(Fingerprint& fp, size_t i) {
-  fp[i / 32] |= 1 << i % 32;
+inline void fp_set_bit(Fingerprint& fp, const size_t i) {
+  const size_t j = i / 64;
+  const size_t k = i % 64;
+  fp[j] |= (UINT64_C(1) << k);
 }
 
 // From https://github.com/rdkit/rdkit/blob/06027dcd05674787b61f27ba46ec0d42a6037540/Code/DataStructs/BitVect.cpp#L23
