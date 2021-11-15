@@ -4,6 +4,20 @@
 #' @name MorganMap
 #' @title Morgan fingerprint collection for identity checking
 #' @description Efficient structure for checking identity of Morgan fingerprints
+#' @field new Construct new fingerprint dataset
+#'
+#' The vector of fingerprints passed to the constructor can optionally be
+#' named. Names need to be coercible to integers. The names can then be used
+#' to refer to fingerprints in all functions using this object.
+#' \itemize{
+#'   \item Parameter fingerprints - Character vector of fingerprints,
+#'     optionally wrapped in [fingerprints()]
+#' }
+#' @field find_matches Find fingerprints in the collection that are identical
+#'   to the given fingerprints \itemize{
+#'   \item Parameter fingerprints - Character vector of fingerprints,
+#'     optionally wrapped in [fingerprints()]
+#' }
 #' @importFrom Rcpp cpp_object_initializer
 #' @export
 NULL
@@ -11,18 +25,51 @@ NULL
 #' @name MorganFPS
 #' @title Morgan fingerprints collection
 #' @description Efficient structure for storing a set of Morgan fingerprints
-#' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
-#'   format or a path to a binary file of fingerprints using the argument
-#'   `from_file = TRUE`. The vector of fingerprints can optionally be named.
-#'   Names need to be coercible to integers. When querying, the indices i and j
-#'   refer to the given names.
-#' @field tanimoto (i,j) similarity between fingerprints i and j
-#' @field tanimoto_all (i) similarity between fingerprint i and all others
-#' @field tanimoto_threshold (threshold) similarity of all NxN combinations of fingerprints above the set threshold
-#' @field tanimoto_subset (i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL
-#' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
-#'    fingerprints in the collection
-#' @field save_file (path, compression_level) Save fingerprints to file in binary format
+#' @field new Construct new fingerprint dataset
+#'
+#' Accepts either a vector of fingerprints in hexadecimal
+#' format or a path to a binary file of fingerprints
+#'
+#' The vector of fingerprints passed to the constructor can optionally be
+#' named. Names need to be coercible to integers. The names can then be used
+#' to refer to fingerprints in all functions using this object.
+#' \itemize{
+#'   \item Parameter fingerprints - Character vector of fingerprints,
+#'     optionally wrapped in [fingerprints()], or path to fingerprint file
+#'     saved using `save_file()`.
+#'   \item Parameter: from_file (default FALSE) - Set true to load from file
+#' }
+#' @field tanimoto similarity between fingerprints i and j \itemize{
+#'   \item Parameters: i, j - integer labels of two fingerprints
+#'   \item Returns: scalar numeric - Tanimoto similarity
+#' }
+#' @field tanimoto_all similarity between fingerprint i and all others \itemize{
+#'   \item Parameter: i - integer label of fingerprint
+#'   \item Returns: Dataframe with columns "id" and "similarity"
+#' }
+#' @field tanimoto_threshold similarity of all NxN combinations of fingerprints
+#'   above the given threshold \itemize{
+#'   \item Parameter: threshold - numeric threshold between 0 and 1
+#'   \item Returns: Dataframe with columns "id_1", "id_2", and "similarity"
+#' }
+#' @field tanimoto_subset similarity of a set of fingerprints against another set,
+#'   or all fingerprints in the collection when j is NULL \itemize{
+#'   \item Parameters: i, j - vectors of fingerprint labels. j can be NULL.
+#'   \item Returns: Dataframe with columns "id_1", "id_2", and "similarity"
+#' }
+#' @field tanimoto_ext similarity between given fingerprint and all
+#'   fingerprints in the collection \itemize{
+#'   \item Parameter: s - Fingerprint, optionally wrapped in [fingerprints()]
+#'     to specify encoding
+#'   \item Returns: Dataframe with columns "id" and "similarity"
+#' }
+#' @field save_file Save fingerprints to file in binary format \itemize{
+#'   \item Parameter: path - Path to location where fingerprints will be stored
+#'   \item Parameter: compression_level (default 3) - Optional integer between
+#'     0 and 22 specifying the level of compression used. Higher values produce
+#'     smaller files at the cost of slowing down writing
+#' }
+#' @field n number of fingerprints
 #' @field size number of bytes used to store the fingerprints
 #' @importFrom Rcpp cpp_object_initializer
 #' @export
@@ -32,8 +79,7 @@ NULL
 #'
 #' Computes Tanimoto similarity between two hexadecimal strings
 #'
-#' @param s1 Hexadecimal string of length 512
-#' @param s2 Hexadecimal string of length 512
+#' @param s1,s2 Two fingerprints, optionally each wrapped in [fingerprints()]
 #' @return Jaccard similarity over the bits representing individual keys
 #' @export
 tanimoto <- function(s1, s2) {

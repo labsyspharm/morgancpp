@@ -6,8 +6,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <algorithm>
-#include <exception>
 
 #include "utils.hpp"
 
@@ -284,7 +282,7 @@ std::string guess_fp_format(const Rcpp::CharacterVector& fps_hex) {
   } else {
     format = Rcpp::as<std::string>(fps_hex.attr("format"));
   }
-  if (format != "full" && format != "packed")
+  if (format != "full" && format != "rle")
     Rcpp::stop("Unknown format");
   return format;
 }
@@ -292,7 +290,7 @@ std::string guess_fp_format(const Rcpp::CharacterVector& fps_hex) {
 std::function<Fingerprint (const std::string&)> select_fp_reader(const std::string& format) {
   if (format == "full") {
     return hex2fp;
-  } else if (format == "packed") {
+  } else if (format == "rle") {
     return rdkit2fp;
   } else {
     Rcpp::stop("Unknown format");
@@ -347,4 +345,3 @@ size_t zstd_frame_decompress(
 
   return decompressed_size;
 };
-

@@ -9,7 +9,7 @@ fingerprints(fps, format = "full")
 \arguments{
 \item{fps}{Character vector of fingerprints (optionally named)}
 
-\item{format}{Format of fingerprints. Can either be "full" or "packed" (see Details).}
+\item{format}{Format of fingerprints. Can either be "full" or "rle" (see Details).}
 }
 \value{
 Character vector of fingerprints suitable as \code{MorganFPS$new()} input
@@ -18,12 +18,12 @@ Character vector of fingerprints suitable as \code{MorganFPS$new()} input
 Make character vector of fingerprints.
 }
 \details{
-"packed" representations of fingerprints can be generated using RDkit:\preformatted{AllChem.GetMorganFingerprintAsBitVect(
+Run-length encoded (RLE) representations of fingerprints can be generated using RDkit:\preformatted{AllChem.GetMorganFingerprintAsBitVect(
   inchi.MolFromInchi("InChI=1S/C17H18N6/c18-7-5-15(12-3-1-2-4-12)23-10-13(9-22-23)16-14-6-8-19-17(14)21-11-20-16/h6,8-12,15H,1-5H2,(H,19,20,21)/t15-/m1/s1"),2,nBits=1024
 ).ToBinary().hex()
 }
 
-"full" representations are hex-encoded versions of the binary output of RDkit\preformatted{AllChem.GetMorganFingerprintAsBitVect(
+"full" representations are hex-encoded versions of the binary output of RDkit:\preformatted{AllChem.GetMorganFingerprintAsBitVect(
   inchi.MolFromInchi("InChI=1S/C17H18N6/c18-7-5-15(12-3-1-2-4-12)23-10-13(9-22-23)16-14-6-8-19-17(14)21-11-20-16/h6,8-12,15H,1-5H2,(H,19,20,21)/t15-/m1/s1"),2,nBits=1024
 ).ToBitString()
 }
@@ -35,7 +35,7 @@ fingerprints(
   "e0ffffff0004000037000000043c221a0c0e0c044a140ede321e3e2c06000e104c14362c040c206a3a76022a06401c1800540402021e002a0a00183e1640101a462e1208",
   "e0ffffff000400003200000002042c04182a1c125a0006ae8e2a00140618060622620e365c92307e0a023c021478041e02320e0c04282046000e10124c3208"
  ),
- format = "packed"
+ format = "rle"
 )
 fingerprints(
  c(

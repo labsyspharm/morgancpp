@@ -1,6 +1,5 @@
 #include <Rcpp.h>
 #include <vector>
-#include <array>
 #include <unordered_map>
 
 #include "utils.hpp"
@@ -10,6 +9,20 @@ using namespace Rcpp;
 //' @name MorganMap
 //' @title Morgan fingerprint collection for identity checking
 //' @description Efficient structure for checking identity of Morgan fingerprints
+//' @field new Construct new fingerprint dataset
+//'
+//' The vector of fingerprints passed to the constructor can optionally be
+//' named. Names need to be coercible to integers. The names can then be used
+//' to refer to fingerprints in all functions using this object.
+//' \itemize{
+//'   \item Parameter fingerprints - Character vector of fingerprints,
+//'     optionally wrapped in [fingerprints()]
+//' }
+//' @field find_matches Find fingerprints in the collection that are identical
+//'   to the given fingerprints \itemize{
+//'   \item Parameter fingerprints - Character vector of fingerprints,
+//'     optionally wrapped in [fingerprints()]
+//' }
 //' @importFrom Rcpp cpp_object_initializer
 //' @export
 class MorganMap {

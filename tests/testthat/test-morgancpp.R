@@ -52,8 +52,8 @@ test_that("Collections can be queried for full similarity profiles", {
 
     expect_equal( nrow(v1), 100 )
     expect_equal( nrow(v2), 100 )
-    expect_identical( v0, v1[["structural_similarity"]] )
-    expect_identical( v0, v2[["structural_similarity"]] )
+    expect_identical( v0, v1[["similarity"]] )
+    expect_identical( v0, v2[["similarity"]] )
 })
 
 test_that("Collection indexing is 1-based", {
@@ -133,7 +133,7 @@ test_that("Subset queries are accurate", {
         combos,
         mapply(function(x, y) m$tanimoto(x, y), Var2, Var1)
     )
-    expect_equal(res$structural_similarity, manual_similarity)
+    expect_equal(res$similarity, manual_similarity)
     res <- m$tanimoto_subset(vn_x, NULL)
     expect_equal(nrow(res), 1000)
     combos <- expand.grid(sort(vn), sort(vn_x))
@@ -141,7 +141,7 @@ test_that("Subset queries are accurate", {
         combos,
         mapply(function(x, y) m$tanimoto(x, y), Var2, Var1)
     )
-    expect_equal(res$structural_similarity, manual_similarity)
+    expect_equal(res$similarity, manual_similarity)
 })
 
 
@@ -168,7 +168,7 @@ test_that("Loading fingprints from rdkit hex code works", {
       "e0ffffff0004000037000000043c221a0c0e0c044a140ede321e3e2c06000e104c14362c040c206a3a76022a06401c1800540402021e002a0a00183e1640101a462e1208",
       "e0ffffff000400003200000002042c04182a1c125a0006ae8e2a00140618060622620e365c92307e0a023c021478041e02320e0c04282046000e10124c3208"
     ),
-    "packed"
+    "rle"
   )
   m <- MorganFPS$new(fps)
   expect_equal(m$n(), 3)
@@ -179,7 +179,7 @@ test_that("Loading fingprints from rdkit hex code works", {
     fingerprints(
       c(
         "e0ffffff0004000037000000043c221a0c0e0c044a140ede321e3e2c06000e104c14362c040c206a3a76022a06401c1800540402021e002a0a00183e1640101a462e1208"      ),
-      "packed"
+      "rle"
     )
   )
   expect_equal(nrow(ma), 1)

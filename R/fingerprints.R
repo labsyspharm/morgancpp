@@ -2,7 +2,7 @@
 #'
 #' Make character vector of fingerprints.
 #'
-#' "packed" representations of fingerprints can be generated using RDkit:
+#' Run-length encoded (RLE) representations of fingerprints can be generated using RDkit:
 #'
 #' ```
 #' AllChem.GetMorganFingerprintAsBitVect(
@@ -19,7 +19,7 @@
 #' ```
 #'
 #' @param fps Character vector of fingerprints (optionally named)
-#' @param format Format of fingerprints. Can either be "full" or "packed" (see Details).
+#' @param format Format of fingerprints. Can either be "full" or "rle" (see Details).
 #' @return Character vector of fingerprints suitable as `MorganFPS$new()` input
 #' @examples
 #' fingerprints(
@@ -28,7 +28,7 @@
 #'   "e0ffffff0004000037000000043c221a0c0e0c044a140ede321e3e2c06000e104c14362c040c206a3a76022a06401c1800540402021e002a0a00183e1640101a462e1208",
 #'   "e0ffffff000400003200000002042c04182a1c125a0006ae8e2a00140618060622620e365c92307e0a023c021478041e02320e0c04282046000e10124c3208"
 #'  ),
-#'  format = "packed"
+#'  format = "rle"
 #' )
 #' fingerprints(
 #'  c(
@@ -39,7 +39,7 @@
 #' )
 #' @export
 fingerprints <- function(fps, format = "full") {
-  if (!format %in% c("full", "packed"))
+  if (!format %in% c("full", "rle"))
     stop("Wrong format")
   class(fps) <- "fps"
   attr(fps, "format") <- format

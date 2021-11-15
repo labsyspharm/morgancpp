@@ -7,9 +7,7 @@
 tanimoto(s1, s2)
 }
 \arguments{
-\item{s1}{Hexadecimal string of length 512}
-
-\item{s2}{Hexadecimal string of length 512}
+\item{s1, s2}{Two fingerprints, optionally each wrapped in \code{\link[=fingerprints]{fingerprints()}}}
 }
 \value{
 Jaccard similarity over the bits representing individual keys

@@ -48,13 +48,56 @@ tanimoto(fps[1], fps[2])
 tanimoto(fps[1], "FFF")
 ```
 
-However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an efficient manner and query that structure for similarity:
+## The `MorganFPS` data structure
+
+However, doing this for a large number of fingerprints will be slow. Instead, we can initialize the c++ data structure to store fingerprints in an efficient manner and query that structure for similarity.
+
+### From RDkit "full" hex-encoded fingerprints
+
+These fingerprint representations can be generated in RDkit by converting the
+output of `ToBitString()` to hexadecimal encoding. The example data above
+is encoded that way.
+
+```{python, echo = TRUE, eval = FALSE}
+AllChem.GetMorganFingerprintAsBitVect(inchi).ToBitString()
+```
+
+These fingerprints can be imported to morgancpp by passing the fingerprint
+character vector directly to `MorganFPS$new()`.
 
 ```{r}
 m <- MorganFPS$new(fps)
 object.size(fps)
 m$size()
 ```
+
+### From RDkit run-length encoded (RLE) fingerprints
+
+Run-length encoding (RLE) is an alternative, more space efficient way of
+representing fingerprints.
+
+```{python, echo = TRUE, eval = FALSE}
+AllChem.GetMorganFingerprintAsBitVect(inchi).ToBitString()
+```
+
+These fingerprints can be imported to morgancpp by wrapping the fingerprint
+character vector in `fingerprints()` specifying their encoding and passing them
+to `MorganFPS$new()`.
+
+```{r}
+m2 <- MorganFPS$new(
+  fingerprints(
+    c(
+      "e0ffffff000400001a00000026582eb62a09002c2a620c18309638069c0644327826440c324e3e98",
+      "e0ffffff0004000037000000043c221a0c0e0c044a140ede321e3e2c06000e104c14362c040c206a3a76022a06401c1800540402021e002a0a00183e1640101a462e1208",
+      "e0ffffff000400003200000002042c04182a1c125a0006ae8e2a00140618060622620e365c92307e0a023c021478041e02320e0c04282046000e10124c3208"
+    ),
+    format = "rle"
+  )
+)
+```
+
+## Computing similarities
 
 Similarity between fingerprints in the structure can be computed by indexing:
 
@@ -85,12 +128,12 @@ kable(head(res2), label = "res2")
 ## Tresholded searches
 
 Often the similarities between all NxN pairs of fingerprints above a certain
-threshold are of interest. The `tanimoto_threshold()` computes these similarities
+threshold are of interest. `tanimoto_threshold()` computes these similarities
 and outputs them as a data frame.
 
 
 ```{r}
-res3 <- m$tanimoto_threshold( 0.9 )
+res3 <- m$tanimoto_threshold(0.9)
 ```
 
 ```{r, echo = FALSE, results = "asis"}
@@ -112,6 +155,20 @@ m2 <- MorganFPS$new(tmp_file, from_file = TRUE)
 m2$size()
 ```
 
+## The `MorganMap` data structure
+
+In addition to finding similarities between fingerprints there is a specialized
+data structure for finding identical fingerprints as fast as possible.
+
+```{r}
+map <- MorganMap$new(fps)
+res4 <- map$find_matches(sample(fps, 10))
+```
+
+```{r, echo = FALSE, results = "asis"}
+kable(head(res4), label = "res4")
+```
+
 ## Additional documentation
 
 Obtaining additional information about functionality of the package can be done through the standard R interface:
@@ -123,6 +180,7 @@ library( help = morgancpp )
 # Help for individual functions / data structures
 ?morgancpp::tanimoto
 ?morgancpp::MorganFPS
+?morgancpp::MorganMap
 
 # C++ docstrings providing full signatures of each method
 morgancpp::MorganFPS
