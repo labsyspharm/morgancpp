@@ -5,173 +5,10 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <algorithm>
 
-using Fingerprint = std::array<std::uint64_t, 32>;
-using FingerprintName = std::int32_t;
-using FingerprintN = std::uint64_t;
+#include "utils.hpp"
 
-FingerprintName convert_name(std::string x) {
-  FingerprintName name;
-  try {
-    // Converting to float first to cover cases where integers are passed as, e.g. 1e+07
-    name = static_cast<FingerprintName>(std::stold(x));
-  } catch (const std::invalid_argument& e) {
-      Rcpp::stop(
-        "Fingerprint names must be passed as positive integers, numerics, or strings representing integers."
-      );
-  } catch (...) {
-      Rcpp::stop("Unknown error converting Fingerprint names");
-  }
-  return name;
-}
-
-FingerprintName convert_name(Rcpp::RObject& x) {
-  FingerprintName name;
-  if (Rcpp::is<Rcpp::CharacterVector>(x)) {
-    name = convert_name(Rcpp::as<std::string>(x));
-  } else if (Rcpp::is<Rcpp::IntegerVector>(x) || Rcpp::is<Rcpp::NumericVector>(x)) {
-    name = static_cast<FingerprintName>(Rcpp::as<int>(x));
-  } else {
-    Rcpp::stop(
-      "Fingerprint indices (names) must be passed as positive integers, numerics, or strings representing integers."
-    );
-  }
-  return name;
-}
-
-std::vector<FingerprintName> convert_name_vec(Rcpp::RObject& names) {
-  std::vector<FingerprintName> unsorted_names;
-  if (Rcpp::is<Rcpp::CharacterVector>(names)) {
-    auto passed_names_vec = Rcpp::as<Rcpp::CharacterVector>(names);
-    unsorted_names.reserve(passed_names_vec.size());
-    for (auto& x: passed_names_vec)
-      unsorted_names.push_back(convert_name(Rcpp::as<std::string>(x)));
-  } else if (Rcpp::is<Rcpp::IntegerVector>(names) || Rcpp::is<Rcpp::NumericVector>(names)) {
-    unsorted_names = Rcpp::as< std::vector<FingerprintName> >(names);
-  } else {
-    Rcpp::stop(
-      "Fingerprint names must be passed as positive integers, numerics, or strings representing integers."
-    );
-  }
-  return unsorted_names;
-}
-
-std::vector<size_t> sort_indices(std::vector<FingerprintName>& unsorted_names) {
-  size_t n = unsorted_names.size();
-  // Make vector that contains indices that sort the given vector
-  std::vector<size_t> sort_vector(n);
-  std::iota(sort_vector.begin(), sort_vector.end(), 0);
-  std::sort(
-    sort_vector.begin(), sort_vector.end(),
-    [&](const size_t i, const size_t j){return unsorted_names.at(i) < unsorted_names.at(j);}
-  );
-  return sort_vector;
-}
-
-std::vector<FingerprintName> convert_sort_name_vec(Rcpp::RObject& names) {
-  auto unsorted_names = convert_name_vec(names);
-  auto sort_vector = sort_indices(unsorted_names);
-  std::vector<FingerprintName> sorted_names;
-  sorted_names.reserve(unsorted_names.size());
-  for (auto &i: sort_vector) {
-    sorted_names.push_back(unsorted_names.at(i));
-  }
-  // Checking for duplicate names
-  auto duplicate_pair = std::adjacent_find(sorted_names.begin(), sorted_names.end());
-  if (duplicate_pair != sorted_names.end()) {
-    Rcpp::stop("Duplicate names are not allowed");
-  }
-  return sorted_names;
-}
-
-size_t zstd_frame_decompress(
-    std::ifstream &in_stream, size_t &compressed_size, char* out_buffer,
-    size_t &out_buffer_size
-) {
-  std::vector<char> compressed_buffer;
-  // compressed_buffer.resize(ZSTD_FRAMEHEADERSIZE_MAX);
-  // std::streampos cur_pos = in_stream.tellg();
-  // in_stream.read(compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX);
-  // in_stream.seekg(cur_pos, std::ios_base::beg);
-  //
-  // unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
-  //   compressed_buffer.data(), ZSTD_FRAMEHEADERSIZE_MAX
-  // );
-  compressed_buffer.resize(compressed_size);
-  in_stream.read(compressed_buffer.data(), compressed_size);
-  unsigned long long const decompressed_size = ZSTD_getFrameContentSize(
-    compressed_buffer.data(), compressed_size
-  );
-  if (decompressed_size == ZSTD_CONTENTSIZE_ERROR || decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN) {
-    Rcpp::stop("Error finding decompressed frame size");
-  }
-
-  size_t const frame_compressed_size = ZSTD_findFrameCompressedSize(
-    compressed_buffer.data(), compressed_size
-  );
-  if (ZSTD_isError(frame_compressed_size)) {
-    Rcpp::stop("Error finding compressed frame size: %s", ZSTD_getErrorName(frame_compressed_size));
-  }
-  if (compressed_size != frame_compressed_size) {
-    Rcpp::stop("Inconsistent reported compressed sizes: %i and %i", compressed_size, frame_compressed_size);
-  }
-  if (decompressed_size != out_buffer_size) {
-    Rcpp::stop("Decompressed size differs from output buffer size: %i and %i", decompressed_size, out_buffer_size);
-  }
-  size_t const decompressed_bytes = ZSTD_decompress(
-    out_buffer, decompressed_size,
-    compressed_buffer.data(), compressed_size
-  );
-  if (ZSTD_isError(decompressed_bytes)) {
-    Rcpp::stop("Error decompressing: %s", ZSTD_getErrorName(decompressed_bytes));
-  }
-  if (decompressed_bytes != decompressed_size) {
-    Rcpp::stop("Inconsistent decompressed size: Expected %i Actual %i", decompressed_size, decompressed_bytes);
-  }
-
-  return decompressed_size;
-};
-
-// Parse a single hexadecimal character to its integer representation.
-int parse_hex_char(const char& c) {
-  int v;
-  if ((c >= '0') && (c <= '9')) {
-    v = (c - '0');
-  } else if ((c >= 'A') && (c <= 'F')) {
-    v = (c - 'A' + 10);
-  } else if ((c >= 'a') && (c <= 'f')) {
-    v = (c - 'a' + 10);
-  } else {
-    ::Rf_error("Hex string may only contain characters in [0-9A-F]");
-  }
-  return v;
-}
-
-// Convert raw byte string to fingerprint.
-Fingerprint raw2fp(const std::string& raw) {
-  if (raw.length() != 256) {
-    ::Rf_error("Input raw string must be of length 256");
-  }
-  Fingerprint fp;
-  std::memcpy(fp.data(), &raw[0], sizeof(fp));
-  return fp;
-}
-
-// Convert ASCII hex string to fingerprint.
-Fingerprint hex2fp(const std::string& hex) {
-  if (hex.length() != 512) {
-    ::Rf_error("Input hex string must be of length 512");
-  }
-  // Convert hex to raw bytes
-  std::string raw(256, '\0');
-  auto hi = std::cbegin(hex);
-  for (auto& ri : raw) {
-    ri = parse_hex_char(*hi++) | (parse_hex_char(*hi++) << 4);
-  }
-  return raw2fp(raw);
-}
-
+using namespace Rcpp;
 
 // Compute Jaccard similarity of two fingerprints
 double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
@@ -186,37 +23,107 @@ double jaccard_fp(const Fingerprint& f1, const Fingerprint& f2) {
   return static_cast<double>(count_and) / count_or;
 }
 
+Fingerprint convert_fp(const CharacterVector& fps_hex) {
+  if (fps_hex.length() != 1)
+    stop("Requires exactly one fingerprint");
+  std::string format = guess_fp_format(fps_hex);
+  auto string_to_fp = select_fp_reader(format);
+  return string_to_fp(as<std::string>(fps_hex(0)));
+}
 
 //' Tanimoto similarity between two Morgan fingerprints
 //'
 //' Computes Tanimoto similarity between two hexadecimal strings
 //'
-//' @param s1 Hexadecimal string of length 512
-//' @param s2 Hexadecimal string of length 512
+//' @param s1,s2 Two fingerprints, optionally each wrapped in [fingerprints()]
 //' @return Jaccard similarity over the bits representing individual keys
 //' @export
 // [[Rcpp::export]]
-double tanimoto(const std::string& s1, const std::string& s2) {
-  const Fingerprint& fp1 = hex2fp(s1);
-  const Fingerprint& fp2 = hex2fp(s2);
+double tanimoto(const CharacterVector& s1, const CharacterVector& s2) {
+  const Fingerprint& fp1 = convert_fp(s1);
+  const Fingerprint& fp2 = convert_fp(s2);
   return jaccard_fp(fp1, fp2);
 }
 
+void convert_fps(
+    const CharacterVector& fps_hex,
+    std::vector<FingerprintName>& out_names,
+    std::vector<Fingerprint>& out_fps
+) {
+  std::string format = guess_fp_format(fps_hex);
+  auto string_to_fp = select_fp_reader(format);
+  size_t n = fps_hex.length();
+  RObject passed_names = fps_hex.names();
+  out_fps.reserve(n);
+  out_names.reserve(n);
+  if(passed_names.isNULL()) {
+    for (int i = 0; i < n; i++) {
+      out_names.push_back((FingerprintName) i + 1);
+      out_fps.push_back(string_to_fp(as<std::string>(fps_hex(i))));
+    }
+  } else {
+    std::vector<FingerprintName> unsorted_names = convert_name_vec(passed_names);
+    // Make vector that contains indices that sort the name vector
+    std::vector<size_t> sort_vector = sort_indices(unsorted_names);
+    for (auto i: sort_vector) {
+      out_names.push_back(unsorted_names.at(i));
+      out_fps.push_back(string_to_fp(as<std::string>(fps_hex(i))));
+    }
+    // Checking for duplicate names
+    auto duplicate_pair = std::adjacent_find(out_names.begin(), out_names.end());
+    if (duplicate_pair != out_names.end())
+      stop("Duplicate names are not allowed");
+  }
+}
 
 //' @name MorganFPS
 //' @title Morgan fingerprints collection
 //' @description Efficient structure for storing a set of Morgan fingerprints
-//' @field new Constructor. Accepts either a vector of fingerprints in hexadecimal
-//'   format or a path to a binary file of fingerprints using the argument
-//'   `from_file = TRUE`. The vector of fingerprints can optionally be named.
-//'   Names need to be coercible to integers. When querying, the indices i and j
-//'   refer to the given names.
-//' @field tanimoto (i,j) similarity between fingerprints i and j
-//' @field tanimoto_all (i) similarity between fingerprint i and all others
-//' @field tanimoto_subset (i,j) similarity of a set of fingerprints against another set, or all other fingerprints in the collection when j is NULL
-//' @field tanimoto_ext (s) similarity between external hexadecimal string s and all
-//'    fingerprints in the collection
-//' @field save_file (path, compression_level) Save fingerprints to file in binary format
+//' @field new Construct new fingerprint dataset
+//'
+//' Accepts either a vector of fingerprints in hexadecimal
+//' format or a path to a binary file of fingerprints
+//'
+//' The vector of fingerprints passed to the constructor can optionally be
+//' named. Names need to be coercible to integers. The names can then be used
+//' to refer to fingerprints in all functions using this object.
+//' \itemize{
+//'   \item Parameter fingerprints - Character vector of fingerprints,
+//'     optionally wrapped in [fingerprints()], or path to fingerprint file
+//'     saved using `save_file()`.
+//'   \item Parameter: from_file (default FALSE) - Set true to load from file
+//' }
+//' @field tanimoto similarity between fingerprints i and j \itemize{
+//'   \item Parameters: i, j - integer labels of two fingerprints
+//'   \item Returns: scalar numeric - Tanimoto similarity
+//' }
+//' @field tanimoto_all similarity between fingerprint i and all others \itemize{
+//'   \item Parameter: i - integer label of fingerprint
+//'   \item Returns: Dataframe with columns "id" and "similarity"
+//' }
+//' @field tanimoto_threshold similarity of all NxN combinations of fingerprints
+//'   above the given threshold \itemize{
+//'   \item Parameter: threshold - numeric threshold between 0 and 1
+//'   \item Returns: Dataframe with columns "id_1", "id_2", and "similarity"
+//' }
+//' @field tanimoto_subset similarity of a set of fingerprints against another set,
+//'   or all fingerprints in the collection when j is NULL \itemize{
+//'   \item Parameters: i, j - vectors of fingerprint labels. j can be NULL.
+//'   \item Returns: Dataframe with columns "id_1", "id_2", and "similarity"
+//' }
+//' @field tanimoto_ext similarity between given fingerprint and all
+//'   fingerprints in the collection \itemize{
+//'   \item Parameter: s - Fingerprint, optionally wrapped in [fingerprints()]
+//'     to specify encoding
+//'   \item Returns: Dataframe with columns "id" and "similarity"
+//' }
+//' @field save_file Save fingerprints to file in binary format \itemize{
+//'   \item Parameter: path - Path to location where fingerprints will be stored
+//'   \item Parameter: compression_level (default 3) - Optional integer between
+//'     0 and 22 specifying the level of compression used. Higher values produce
+//'     smaller files at the cost of slowing down writing
+//' }
+//' @field n number of fingerprints
 //' @field size number of bytes used to store the fingerprints
 //' @importFrom Rcpp cpp_object_initializer
 //' @export
@@ -225,100 +132,61 @@ class MorganFPS {
 public:
 
   // Constructor accepts a named character vector of hex strings
-  MorganFPS(const Rcpp::CharacterVector& fps_hex) {
-    size_t n = fps_hex.length();
-    Rcpp::RObject passed_names = fps_hex.names();
-    fps.reserve(n);
-    fp_names.reserve(n);
-    if(passed_names.isNULL()) {
-      for (int i = 0; i < n; i++) {
-        fp_names.push_back((FingerprintName) i + 1);
-        fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
-      }
-    } else {
-      std::vector<FingerprintName> unsorted_names = convert_name_vec(passed_names);
-      // Make vector that contains indices that sort the name vector
-      std::vector<size_t> sort_vector = sort_indices(unsorted_names);
-      for (auto &i: sort_vector) {
-        fp_names.push_back(unsorted_names.at(i));
-        fps.push_back(hex2fp(Rcpp::as<std::string>(fps_hex(i))));
-      }
-      // Checking for duplicate names
-      auto duplicate_pair = std::adjacent_find(fp_names.begin(), fp_names.end());
-      if (duplicate_pair != fp_names.end()) {
-        Rcpp::stop("Duplicate names are not allowed");
-      }
-    }
+  // either in full hexadecimal format or in packed RDKIT format
+  MorganFPS(const CharacterVector& fps_hex) {
+    convert_fps(fps_hex, fp_names, fps);
   }
 
   // Constructor accepts a file path to load fingerprints from binary file
   MorganFPS(const std::string& filename, const bool from_file) {
-    std::ifstream in_stream;
-    in_stream.open(filename, std::ios::in | std::ios::binary);
-
-    // std::in_stream in_stream(filename, std::ios::in | std::ios::binary);
-    // std::vector<char> file_buffer(std::istreambuf_iterator<char>(input), {});
-    // std::vector<char> decompressed_buffer;
-
-    char magic[] = "xORGANFPS";
-    in_stream.read(magic, 9);
-
-    if (strcmp(magic, "MORGANFPS") != 0) {
-      Rcpp::stop("File is incompatible, doesn't start with 'MORGANFPS': '%s'", magic);
-    }
-
-    FingerprintN n;
-    in_stream.read(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
-    Rcpp::Rcerr << "Reading " << n << " fingerprints from file\n";
-    fps.resize(n);
-    fp_names.resize(n);
-
-    size_t size_next_block;
-    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcerr << "Fingerprint block has " << size_next_block << " bytes\n";
-
-    size_t expected_decompressed_size = fps.size() * sizeof(Fingerprint);
-
-    zstd_frame_decompress(
-      in_stream, size_next_block, reinterpret_cast<char*>(fps.data()),
-      expected_decompressed_size
-    );
-
-    Rcpp::Rcerr << "Fingerprints decompressed\n";
-
-    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
-    Rcpp::Rcerr << "Names block has " << size_next_block << " bytes\n";
-
-    expected_decompressed_size = fp_names.size() * sizeof(FingerprintName);
-
-    zstd_frame_decompress(
-      in_stream, size_next_block, reinterpret_cast<char*>(fp_names.data()),
-      expected_decompressed_size
-    );
-
-    Rcpp::Rcerr << "Names decompressed\n";
+    read_file(filename);
   }
 
   // Tanimoto similarity between drugs i and j
-  double tanimoto(Rcpp::RObject &i, Rcpp::RObject &j) {
+  double tanimoto(RObject &i, RObject &j) {
     return jaccard_fp(fp_index(i), fp_index(j));
   }
 
   // Tanimoto similarity of drug i to every other drug
-  Rcpp::DataFrame tanimoto_all(Rcpp::RObject &x) {
+  DataFrame tanimoto_all(RObject &x) {
     const Fingerprint fp_other = fp_index(x);
-    Rcpp::NumericVector res(fps.size());
+    NumericVector res(fps.size());
     for (int i = 0; i < fps.size(); i++) {
       res[i] = jaccard_fp(fps[i], fp_other);
     }
-    return Rcpp::DataFrame::create(
-      Rcpp::Named("id") = fp_names,
-      Rcpp::Named("structural_similarity") = res
+    return DataFrame::create(
+      Named("id") = fp_names,
+      Named("similarity") = res
+    );
+  }
+
+  // Tanimoto similarity of all NxN combinations of fingerprints
+  DataFrame tanimoto_threshold(double threshold) {
+    IntegerVector id_1;
+    IntegerVector id_2;
+    NumericVector sims;
+    for (int i = 0; i < fps.size(); i++) {
+      if (i % 10000 == 0)
+        Rcout << i << " done" << std::endl;
+      checkUserInterrupt();
+      for (int j = i + 1; j < fps.size(); j++) {
+        auto sim = jaccard_fp(fps[i], fps[j]);
+        if (sim > threshold) {
+          id_1.push_back(fp_names[i]);
+          id_2.push_back(fp_names[j]);
+          sims.push_back(sim);
+        }
+      }
+    }
+    return DataFrame::create(
+      Named("id_1") = id_1,
+      Named("id_2") = id_2,
+      Named("similarity") = sims
     );
   }
 
   // Tanimoto similarity of drug list vs the same or another drug list
-  Rcpp::DataFrame tanimoto_subset(Rcpp::RObject& x, Rcpp::RObject& y) {
+  DataFrame tanimoto_subset(RObject& x, RObject& y) {
     auto x_names = convert_sort_name_vec(x);
     auto x_fps = fp_index(x_names);
     std::vector<FingerprintName> x_name;
@@ -352,26 +220,36 @@ public:
         }
       }
     }
-    return Rcpp::DataFrame::create(
-      Rcpp::Named("id_1") = x_name,
-      Rcpp::Named("id_2") = y_name,
-      Rcpp::Named("structural_similarity") = similarity
+    return DataFrame::create(
+      Named("id_1") = x_name,
+      Named("id_2") = y_name,
+      Named("similarity") = similarity
     );
   }
 
   // Tanimoto similarity of an external drug to every other drug
   //   in the collection
-  Rcpp::DataFrame tanimoto_ext(const std::string& other) {
-    const Fingerprint fp_other = hex2fp(other);
-    Rcpp::NumericVector res(fps.size());
-    Rcpp::IntegerVector fp_names_r(fps.size());
-    for (int i = 0; i < fps.size(); i++) {
-      res[i] = jaccard_fp(fps[i], fp_other);
-      fp_names_r[i] = static_cast<int>(fp_names.at(i));
+  DataFrame tanimoto_ext(const CharacterVector& others) {
+    std::vector<FingerprintName> other_names;
+    std::vector<Fingerprint> other_fps;
+    convert_fps(others, other_names, other_fps);
+    size_t nn = other_fps.size() * n();
+    IntegerVector id_1(nn);
+    IntegerVector id_2(nn);
+    NumericVector sim(nn);
+    size_t idx = 0;
+    for (size_t i = 0; i < n(); i++) {
+      for (size_t j = 0; j < other_fps.size(); j++) {
+        sim[idx] = jaccard_fp(fps[i], other_fps[j]);
+        id_1[idx] = other_names[j];
+        id_2[idx] = fp_names[i];
+        idx++;
+      }
     }
-    return Rcpp::DataFrame::create(
-      Rcpp::Named("id") = fp_names_r,
-      Rcpp::Named("structural_similarity") = res
+    return DataFrame::create(
+      Named("id_1") = id_1,
+      Named("id_2") = id_2,
+      Named("similarity") = sim
     );
   }
 
@@ -382,10 +260,10 @@ public:
   // Save binary fp file
   void save_file(const std::string& filename, const int& compression_level=3) {
     if (compression_level < 1 || compression_level > 22)
-      Rcpp::stop("Compression level must be between 0 and 22. Default = 3");
+      stop("Compression level must be between 0 and 22. Default = 3");
 
     FingerprintN n = fps.size();
-    Rcpp::Rcerr << "Wrinting " << n << " fingerprints\n";
+    Rcout << "Wrinting " << n << " fingerprints\n";
 
     std::ofstream out_stream;
     out_stream.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -405,15 +283,15 @@ public:
       compression_level
     );
     if (ZSTD_isError(fingerprints_compressed)) {
-      Rcpp::stop("Error compressing fingerprints: %s", ZSTD_getErrorName(fingerprints_compressed));
+      stop("Error compressing fingerprints: %s", ZSTD_getErrorName(fingerprints_compressed));
     }
 
-    Rcpp::Rcerr << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
+    Rcout << "Fingerprints compressed " << fingerprints_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&fingerprints_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), fingerprints_compressed);
-    Rcpp::Rcerr << "Wrote fingerprints\n";
+    Rcout << "Wrote fingerprints\n";
 
     input_size = fp_names.size() * sizeof(FingerprintName);
     out_buffer.resize(ZSTD_compressBound(input_size));
@@ -423,15 +301,15 @@ public:
       compression_level
     );
     if (ZSTD_isError(names_compressed)) {
-      Rcpp::stop("Error compressing fingerprint names: %s", ZSTD_getErrorName(names_compressed));
+      stop("Error compressing fingerprint names: %s", ZSTD_getErrorName(names_compressed));
     }
 
-    Rcpp::Rcerr << "Names compressed " << names_compressed << " bytes\n";
+    Rcout << "Names compressed " << names_compressed << " bytes\n";
     // Save number of bytes of the compressed data. Important for finding
     // second block with names for decompression
     out_stream.write(reinterpret_cast<const char*>(&names_compressed), sizeof(size_t));
     out_stream.write(out_buffer.data(), names_compressed);
-    Rcpp::Rcerr << "Wrote Names\n";
+    Rcout << "Wrote Names\n";
 
     out_stream.close();
   }
@@ -451,31 +329,84 @@ public:
 
 private:
 
-  Fingerprint& fp_index(Rcpp::RObject& x) {
+  Fingerprint& fp_index(RObject& x) {
     FingerprintName x_name = convert_name(x);
     auto fp_pt = std::lower_bound(fp_names.begin(), fp_names.end(), x_name);
     if (*fp_pt != x_name)
-      Rcpp::stop("Fingerprint %i not found", x_name);
+      stop("Fingerprint %i not found", x_name);
     return fps.at(fp_pt - fp_names.begin());
   }
 
-  std::vector<Fingerprint> fp_index(std::vector<FingerprintName>& names) {
-    std::vector<Fingerprint> hits;
+  std::vector<std::reference_wrapper<Fingerprint>> fp_index(std::vector<FingerprintName>& names) {
+    std::vector<std::reference_wrapper<Fingerprint>> hits;
     hits.reserve(names.size());
     auto last_idx = fp_names.begin();
     std::vector<FingerprintName>::iterator cur_idx;
-    for (auto& x: names) {
+    for (auto x: names) {
       cur_idx = std::lower_bound(last_idx, fp_names.end(), x);
       if (*cur_idx != x)
-        Rcpp::stop("Fingerprint %i not found", x);
+        stop("Fingerprint %i not found", x);
       else
-        hits.push_back(fps.at(cur_idx - fp_names.begin()));
+        hits.push_back(std::ref(fps.at(cur_idx - fp_names.begin())));
         last_idx = cur_idx;
     }
     return hits;
   }
 
+  void read_file(std::string filename) {
+    std::ifstream in_stream;
+    in_stream.open(filename, std::ios::in | std::ios::binary);
+
+    // std::in_stream in_stream(filename, std::ios::in | std::ios::binary);
+    // std::vector<char> file_buffer(std::istreambuf_iterator<char>(input), {});
+    // std::vector<char> decompressed_buffer;
+
+    char magic[] = "xORGANFPS";
+    in_stream.read(magic, 9);
+
+    if (strcmp(magic, "MORGANFPS") != 0) {
+      stop("File is incompatible, doesn't start with 'MORGANFPS': '%s'", magic);
+    }
+
+    FingerprintN n;
+    in_stream.read(reinterpret_cast<char*>(&n), sizeof(FingerprintN));
+    Rcout << "Reading " << n << " fingerprints from file\n";
+    fps.resize(n);
+    fp_names.resize(n);
+
+    size_t size_next_block;
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
+    Rcout << "Fingerprint block has " << size_next_block << " bytes\n";
+
+    size_t expected_decompressed_size = fps.size() * sizeof(Fingerprint);
+
+    zstd_frame_decompress(
+      in_stream, size_next_block, reinterpret_cast<char*>(fps.data()),
+      expected_decompressed_size
+    );
+
+    Rcout << "Fingerprints decompressed\n";
+
+    in_stream.read(reinterpret_cast<char*>(&size_next_block), sizeof(size_t));
+    Rcout << "Names block has " << size_next_block << " bytes\n";
+
+    expected_decompressed_size = fp_names.size() * sizeof(FingerprintName);
+
+    zstd_frame_decompress(
+      in_stream, size_next_block, reinterpret_cast<char*>(fp_names.data()),
+      expected_decompressed_size
+    );
+
+    Rcout << "Names decompressed\n";
+  }
+
 };
+
+// https://stackoverflow.com/a/42585733/4603385
+template <typename T0, typename T1>
+bool typed_valid(SEXP* args, int nargs){
+  return nargs == 2 && is<T0>(args[0]) && is<T1>(args[1]);
+}
 
 // Expose all relevant classes through an Rcpp module
 RCPP_EXPOSED_CLASS(MorganFPS)
@@ -484,22 +415,17 @@ RCPP_MODULE(morgan_cpp) {
   using namespace Rcpp;
 
   class_<MorganFPS>( "MorganFPS" )
-    .constructor<Rcpp::CharacterVector>("Construct fingerprint collection from vector of fingerprints")
-    .constructor<std::string, bool>("Construct fingerprint collection from binary file")
-    .method("size", &MorganFPS::size, "Size of the data in bytes")
-    .method("n", &MorganFPS::n, "Number of elements")
-    .method("tanimoto", &MorganFPS::tanimoto,
-	    "Similarity between two fingerprints in the collection")
-    .method("tanimoto_all", &MorganFPS::tanimoto_all,
-	    "Similarity of a fingerprint against all other fingerprints in the collection")
-    .method("tanimoto_subset", &MorganFPS::tanimoto_subset,
-	    "Similarity of a set of fingerprints against another set or all other fingerprints in the collection.")
-    .method("tanimoto_ext", &MorganFPS::tanimoto_ext,
-	    "Similarity of an external fingerprints against all fingerprints in the collection")
-    .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file),
-	    "Save fingerprints to file in binary format. Compression level between 0 and 22 (default 3).")
-    .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file),
-	    "Save fingerprints to file in binary format Compression level between 0 and 22 (default 3).")
+    .constructor<CharacterVector>("Construct fingerprint collection from character vector")
+    .constructor<std::string, bool>("Construct fingerprint collection from binary file", &typed_valid<std::string, bool>)
+    .method("size", &MorganFPS::size)
+    .method("n", &MorganFPS::n)
+    .method("tanimoto", &MorganFPS::tanimoto)
+    .method("tanimoto_all", &MorganFPS::tanimoto_all)
+    .method("tanimoto_threshold", &MorganFPS::tanimoto_threshold)
+    .method("tanimoto_subset", &MorganFPS::tanimoto_subset)
+    .method("tanimoto_ext", &MorganFPS::tanimoto_ext)
+    .method("save_file", (void (MorganFPS::*)(const std::string&, const int&)) (&MorganFPS::save_file))
+    .method("save_file", (void (MorganFPS::*)(const std::string&)) (&MorganFPS::save_file))
     .field_readonly("fingerprints", &MorganFPS::fps)
     .field_readonly("names", &MorganFPS::fp_names)
     ;

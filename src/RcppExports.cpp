@@ -6,22 +6,24 @@
 using namespace Rcpp;
 
 // tanimoto
-double tanimoto(const std::string& s1, const std::string& s2);
+double tanimoto(const CharacterVector& s1, const CharacterVector& s2);
 RcppExport SEXP _morgancpp_tanimoto(SEXP s1SEXP, SEXP s2SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const std::string& >::type s1(s1SEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type s2(s2SEXP);
+    Rcpp::traits::input_parameter< const CharacterVector& >::type s1(s1SEXP);
+    Rcpp::traits::input_parameter< const CharacterVector& >::type s2(s2SEXP);
     rcpp_result_gen = Rcpp::wrap(tanimoto(s1, s2));
     return rcpp_result_gen;
 END_RCPP
 }
 
+RcppExport SEXP _rcpp_module_boot_morgan_identity_cpp();
 RcppExport SEXP _rcpp_module_boot_morgan_cpp();
 
 static const R_CallMethodDef CallEntries[] = {
     {"_morgancpp_tanimoto", (DL_FUNC) &_morgancpp_tanimoto, 2},
+    {"_rcpp_module_boot_morgan_identity_cpp", (DL_FUNC) &_rcpp_module_boot_morgan_identity_cpp, 0},
     {"_rcpp_module_boot_morgan_cpp", (DL_FUNC) &_rcpp_module_boot_morgan_cpp, 0},
     {NULL, NULL, 0}
 };

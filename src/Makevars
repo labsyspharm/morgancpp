@@ -11,4 +11,4 @@ all: $(SHLIB)
 $(SHLIB): $(LIBZSTD)
 
 $(LIBZSTD):
-	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile lib-mt libzstd.a && cp libzstd.a ..) || exit 1;
+	 (cd zstd && ZSTD_LEGACY_SUPPORT=0 CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS)" MAKE="$(MAKE) -f Makefile" $(MAKE) -f Makefile libzstd.a && cp libzstd.a ..) || exit 1;
